@@ -15,7 +15,6 @@ public sealed class StatusService
 {
     private readonly HistoryStore _history = new();
     private readonly UpdaterRunner _runner;
-    private bool _hasInitializedBackfill;
 
     public StatusService(UpdaterRunner runner) => _runner = runner;
 
@@ -26,17 +25,7 @@ public sealed class StatusService
     /// </summary>
     public List<ProgramStatus> GetAll(bool includeUnavailable = false)
     {
-        // Safety lock: Only load base data and merge archives on boot
-        if (!_hasInitializedBackfill)
-        {
-            _history.Load();
-            _history.ImportFromClaudeArchive();
-            _hasInitializedBackfill = true;
-        }
-        else
-        {
-            _history.Load();
-        }
+        _history.Load();
 
         var historyChanged = false;
         var results = new List<ProgramStatus>();

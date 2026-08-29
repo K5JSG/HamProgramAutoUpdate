@@ -116,9 +116,9 @@ public partial class App : Application
         _window = new MainWindow();
         BuildTrayIcon();
 
-        // Started by the logon task: stay in the tray rather than popping up.
-        var startMinimised = args.Contains("--tray", StringComparer.OrdinalIgnoreCase);
-        if (!startMinimised) ShowWindow();
+        // Always start minimized to the tray, regardless of how the exe was
+        // launched (logon task, desktop shortcut, Start menu, ...) - the
+        // dashboard only opens when the user asks for it via the tray icon.
     }
 
     private void BuildTrayIcon()
@@ -215,6 +215,16 @@ public static class AppInfo
 {
     public static string Version =>
         FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? "").FileVersion ?? "1.0.0.0";
+
+    /// <summary>Parsed form of <see cref="Version"/>, for comparing against a
+    /// GitHub release tag in SelfUpdateService.</summary>
+    public static Version VersionValue =>
+        System.Version.TryParse(Version, out var v) ? v : new Version(0, 0, 0, 0);
+
+    /// <summary>Major.Minor.Build only - the Revision field is always 0 in
+    /// this project's own builds (see build.ps1) and just clutters a
+    /// human-facing display like the window title.</summary>
+    public static string ShortVersion => $"{VersionValue.Major}.{VersionValue.Minor}.{VersionValue.Build}";
 
     public static bool IsElevated
     {

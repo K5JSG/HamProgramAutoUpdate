@@ -22,6 +22,10 @@
                        Foreground="White" VerticalAlignment="Center" />
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="UpdateAvailableButton" Visibility="Collapsed"
+                        Style="{StaticResource PrimaryButton}"
+                        Click="UpdateAvailable_Click" Margin="0,0,12,0" />
+
                 <Border x:Name="ElevationBadge"
                         CornerRadius="10" Padding="9,3" Margin="0,0,12,0"
                         Background="#26FFC300" VerticalAlignment="Center">
@@ -104,7 +108,7 @@
                                             <StackPanel>
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="LAST UPDATE" Style="{StaticResource LabelText}" />
-                                                    <TextBlock Text=" â—" FontSize="8"
+                                                    <TextBlock Text=" ●" FontSize="8"
                                                                Foreground="{StaticResource AccentBrush}"
                                                                VerticalAlignment="Center"
                                                                ToolTip="Recorded by the dashboard; no longer in the log file"
@@ -164,13 +168,13 @@
                            HorizontalAlignment="Center" Margin="0,0,0,12" />
                 <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                            TextAlignment="Center"
-                           Text="The dashboard looks for updater programs and their logs under:" />
+                           Text="None of the tracked programs were detected on this PC, and the dashboard's log folder is empty:" />
                 <TextBlock x:Name="EmptyPath" FontFamily="{StaticResource MonoFont}"
                            Foreground="{StaticResource AccentBrush}" Margin="0,12"
                            TextAlignment="Center" TextWrapping="Wrap" />
                 <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                            TextAlignment="Center"
-                           Text="Copy your updater folders there, or run them once, and their cards will appear here automatically." />
+                           Text="Install one of the tracked programs, or run its updater once, and its card will appear here automatically." />
             </StackPanel>
         </Grid>
     </DockPanel>

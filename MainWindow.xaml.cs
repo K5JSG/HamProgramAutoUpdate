@@ -9,19 +9,76 @@ namespace HamProgramAutoUpdate;
 public partial class MainWindow : Window
 {
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _updateCheckTimer;
     private bool _pollingFast;
+    private ReleaseInfo? _pendingUpdate;
 
     public MainWindow()
     {
         InitializeComponent();
 
-        EmptyPath.Text = UpdaterCatalog.HamRadioDir;
+        Title = $"Ham Program Auto Update v{AppInfo.ShortVersion}";
+        EmptyPath.Text = UpdaterCatalog.LogDir;
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _timer.Tick += (_, _) => Refresh();
         _timer.Start();
 
+        // The dashboard normally stays hidden in the tray for days at a
+        // time (see App.OnStartup), so this timer keeps running whether or
+        // not the window is actually visible.
+        _updateCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(6) };
+        _updateCheckTimer.Tick += (_, _) => _ = CheckForUpdateAsync();
+        _updateCheckTimer.Start();
+
         Loaded += (_, _) => Refresh();
+        Loaded += (_, _) => _ = CheckForUpdateAsync();
+    }
+
+    // ------------------------------------------------------------ updates
+
+    private async Task CheckForUpdateAsync()
+    {
+        var release = await SelfUpdateService.CheckForUpdateAsync();
+
+        _pendingUpdate = release;
+        if (release is null)
+        {
+            UpdateAvailableButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        UpdateAvailableButton.Content = $"Update to v{release.Version} available";
+        UpdateAvailableButton.ToolTip = "Download and install the latest version from GitHub.";
+        UpdateAvailableButton.IsEnabled = true;
+        UpdateAvailableButton.Visibility = Visibility.Visible;
+    }
+
+    private async void UpdateAvailable_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pendingUpdate is not { } release) return;
+
+        var confirm = MessageBox.Show(
+            $"Download and install version {release.Version}?\n\n" +
+            "The dashboard will close and the installer will open. " +
+            "Your update history is kept.",
+            "Update available", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        UpdateAvailableButton.IsEnabled = false;
+        var progress = new Progress<string>(text => UpdateAvailableButton.Content = text);
+
+        var error = await SelfUpdateService.DownloadAndLaunchInstallerAsync(release, progress);
+        if (error is not null)
+        {
+            MessageBox.Show($"Could not download the update.\n\n{error}", "Update failed",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            UpdateAvailableButton.Content = $"Update to v{release.Version} available";
+            UpdateAvailableButton.IsEnabled = true;
+            return;
+        }
+
+        Application.Current.Shutdown();
     }
 
     /// <summary>Closing the window hides it; the tray icon keeps the app alive.</summary>

@@ -235,6 +235,18 @@ public static class TaskSchedulerService
     /// --run-updates once a day. Every program's update logic now lives
     /// in-process (see Services/Updaters), so one task/one action replaces
     /// what used to be a hand-maintained action per external updater exe.
+    ///
+    /// Two triggers: the daily CalendarTrigger, plus a LogonTrigger so a PC
+    /// that was off (or asleep) through the 3am run still gets checked as
+    /// soon as someone logs back on. StartWhenAvailable covers the case
+    /// where the PC is on but the scheduler simply missed the boundary, but
+    /// it fires whenever the Task Scheduler service next notices, not
+    /// reliably at logon - the LogonTrigger is the direct fix for "off
+    /// overnight". Each updater already no-ops when the installed version is
+    /// current (see HeadlessUpdateRunner/IProgramUpdater.RunAsync), so an
+    /// extra run right after a successful 3am run costs nothing beyond the
+    /// version checks. The short delay keeps it from competing with the
+    /// Updater Dashboard task for the first couple minutes after logon.
     /// </summary>
     private static string BuildUpdaterTaskXml(string exePath, TimeOnly dailyTime)
     {
@@ -259,6 +271,10 @@ public static class TaskSchedulerService
         <DaysInterval>1</DaysInterval>
       </ScheduleByDay>
     </CalendarTrigger>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT2M</Delay>
+    </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -298,8 +314,10 @@ public static class TaskSchedulerService
 
     /// <summary>Create (or replace) the "Program Update Scripts" task, which
     /// runs `HamProgramAutoUpdate.exe --run-updates` once a day at
-    /// <paramref name="dailyTime"/> (default 03:00). The Task Scheduler UI
-    /// can be used afterward to change the time like any normal task.</summary>
+    /// <paramref name="dailyTime"/> (default 03:00) and again at every
+    /// logon (with a short delay), so a PC that was off overnight still gets
+    /// checked. The Task Scheduler UI can be used afterward to change the
+    /// time like any normal task.</summary>
     public static (bool ok, string? error) InstallUpdaterTask(string? exePath = null, TimeOnly? dailyTime = null)
     {
         exePath ??= Environment.ProcessPath;

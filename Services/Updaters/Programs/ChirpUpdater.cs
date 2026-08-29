@@ -78,6 +78,7 @@ public sealed class ChirpUpdater : UpdaterBase
             await proc.WaitForExitAsync(ctx.CancellationToken);
 
             var stateAfter = ReadState();
+            SyncLogToConsolidatedFolder();
 
             if (proc.ExitCode != 0)
                 return UpdateResult.Failed($"CHIRP updater exited with code {proc.ExitCode}");
@@ -97,6 +98,32 @@ public sealed class ChirpUpdater : UpdaterBase
         var path = Path.Combine(UpdaterCatalog.HamRadioDir, "Chirp Update Script", "last_installed_build.txt");
         try { return File.Exists(path) ? File.ReadAllText(path).Trim() : null; }
         catch (Exception) { return null; }
+    }
+
+    /// <summary>
+    /// The external exe writes its log straight to its own hardcoded path
+    /// under Documents\Ham Radio, not the dashboard's consolidated log
+    /// folder (see UpdaterCatalog.LogDir) - it has no idea that folder
+    /// exists. Copying the result here after every run is what makes CHIRP's
+    /// card and "View Log" show up-to-date content alongside everything else.
+    /// </summary>
+    private static void SyncLogToConsolidatedFolder()
+    {
+        var entry = UpdaterCatalog.Find("chirp");
+        if (entry is null) return;
+
+        var legacyPath = Path.Combine(UpdaterCatalog.HamRadioDir, entry.RelativeLogPath);
+        if (!File.Exists(legacyPath)) return;
+
+        try
+        {
+            Directory.CreateDirectory(UpdaterCatalog.LogDir);
+            File.Copy(legacyPath, UpdaterCatalog.LogPath(entry), overwrite: true);
+        }
+        catch (Exception)
+        {
+            // Best-effort mirror; the dashboard just won't show this run yet.
+        }
     }
 
     /// <summary>BeginRun/Line/EndRun are all no-ops (Writer stays null the

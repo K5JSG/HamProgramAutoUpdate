@@ -18,13 +18,13 @@
          when WinForms is enabled. -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Version>1.1.1</Version>
+    <FileVersion>1.1.1.0</FileVersion>
+    <AssemblyVersion>1.1.1.0</AssemblyVersion>
     <Company>K5JSG</Company>
     <Product>Ham Program Auto Update</Product>
     <Description>Monitors and runs the ham radio program update scripts.</Description>
-    <Copyright>Copyright Â© K5JSG - Jeremy Gaynor</Copyright>
+    <Copyright>Copyright © 2026 K5JSG - Jeremy Gaynor</Copyright>
   </PropertyGroup>
 
   <!-- Publish profile: a single self-contained exe with no .NET runtime
@@ -47,30 +47,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="ClaudeArchive\" />
-  </ItemGroup>
-
-	<ItemGroup>
-		<!-- Now configures files to copy into your bin folder layout dynamically -->
-		<None Include="ClaudeArchive\Extracted_Dashboard_History\**\*.json">
-			<Generator>None</Generator>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-		<None Include="ClaudeArchive\pull_dashboard.ps1" />
-		<None Include="ClaudeArchive\auto_pull.bat" />
-	</ItemGroup>
-
-  <ItemGroup>
     <!-- CHIRP is the one program whose updater still runs as a bundled
          Python exe rather than an in-process C# implementation - see
          Services/Updaters/Programs/ChirpUpdater.cs for why (archive.chirpmyradio.com
          sits behind a Cloudflare challenge that a real C# browser-automation
          port could not reliably clear; see the class doc comment for the
          two independent, non-coordinate-tuning-fixable blockers found).
-         Shipped as a sibling file next to HamProgramAutoUpdate.exe, the same
-         way the ClaudeArchive files above are, so it travels with this
-         app's own install rather than depending on a separate folder the
-         user maintains independently. -->
+         Shipped as a sibling file next to HamProgramAutoUpdate.exe so it
+         travels with this app's own install rather than depending on a
+         separate folder the user maintains independently. -->
     <!-- ExcludeFromSingleFile: without this, PublishSingleFile bundles
          content items INTO the single exe and extracts them to a temp
          cache at runtime instead of leaving them on disk next to it,
