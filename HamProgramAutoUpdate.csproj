@@ -24,7 +24,7 @@
     <Company>K5JSG</Company>
     <Product>Ham Program Auto Update</Product>
     <Description>Monitors and runs the ham radio program update scripts.</Description>
-    <Copyright>Copyright Â© K5JSG</Copyright>
+    <Copyright>Copyright Â© K5JSG - Jeremy Gaynor</Copyright>
   </PropertyGroup>
 
   <!-- Publish profile: a single self-contained exe with no .NET runtime

@@ -11,13 +11,14 @@ A centralized dashboard application designed to manage, monitor, and execute var
  - Windows Task Scheduler Integration: Automatically creates tasks to run the program nightly at 03:00 AM and upon user logon.
 
 ## Supported Programs
- - WSJT-X
- - TQSL
- - Netlogger
- - N1MM+ Logger+
- - GridtrackerHam Radio Deluxe
- - CHIRP
  - BktTimeSync
- - RT Systems
+ - CHIRP Next
+ - Gridtracker
+ - Ham Radio Deluxe
+ - N1MM+ Logger+
+ - Netlogger
  - [POTA Activator Park Activations](https://github.com/K5JSG/POTA-Activator-Park-Activations)
+ - RT Systems
+ - TQSL
+ - WSJT-X
  - More Soon???
