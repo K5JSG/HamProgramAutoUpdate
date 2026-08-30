@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'V*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test
+        run: dotnet test HamProgramAutoUpdate.slnx -c Release
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Determine version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('V', 'v')
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build exe and installer
+        shell: pwsh
+        run: .\build.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "dist\HamProgramAutoUpdate-v${{ steps.version.outputs.version }}-setup.exe" `
+            "dist\HamProgramAutoUpdate-v${{ steps.version.outputs.version }}.exe" `
+            --title "Ham Program Auto Update v${{ steps.version.outputs.version }}" `
+            --notes "See the commit history for what changed in this release."
