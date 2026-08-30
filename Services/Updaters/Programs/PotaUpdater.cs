@@ -43,18 +43,32 @@ public sealed class PotaUpdater : UpdaterBase
             if (Directory.Exists(candidate)) installDir = candidate;
         }
 
-        var exe = installDir is { } loc ? FindExeIn(loc) : null;
+        var exe = installDir is { } loc ? FindExeIn(loc, config.ProductName) : null;
         var version = exe is not null ? FileVersionHelper.ReadFileVersion(exe) : entry.DisplayVersion;
         return DetectedTarget.Found(exe ?? installDir, version);
     }
 
-    private static string? FindExeIn(string dir)
+    /// <summary>Picks the exe whose name matches the product itself, not just
+    /// any non-uninstaller exe in the folder - this install directory also
+    /// holds bundled utility exes (e.g. CleanupObsoleteFiles.exe, dropped by
+    /// this product's own installer custom action) whose FileVersion has
+    /// nothing to do with the product's real version. Falls back to the old
+    /// "first non-uninstall exe" behavior only if no name match is found, so
+    /// this still degrades gracefully for a build whose exe name doesn't
+    /// match ProductName exactly.</summary>
+    private static string? FindExeIn(string dir, string productName)
     {
         try
         {
             if (!Directory.Exists(dir)) return null;
-            return Directory.EnumerateFiles(dir, "*.exe", SearchOption.TopDirectoryOnly)
-                .FirstOrDefault(p => !Path.GetFileName(p).Contains("uninst", StringComparison.OrdinalIgnoreCase));
+
+            var candidates = Directory.EnumerateFiles(dir, "*.exe", SearchOption.TopDirectoryOnly)
+                .Where(p => !Path.GetFileName(p).Contains("uninst", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            return candidates.FirstOrDefault(p =>
+                string.Equals(Path.GetFileNameWithoutExtension(p), productName, StringComparison.OrdinalIgnoreCase))
+                ?? candidates.FirstOrDefault();
         }
         catch (Exception)
         {
