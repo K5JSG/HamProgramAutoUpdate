@@ -69,7 +69,7 @@ public sealed class StatusService
         if (historyChanged) _history.Save();
 
         return results
-            .OrderByDescending(r => r.LatestRunTime ?? DateTime.MinValue)
+            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
