@@ -15,6 +15,8 @@
 #define MyAppPublisher "K5JSG"
 #define MyAppURL "https://github.com/K5JSG/HamProgramAutoUpdate"
 #define MyAppExeName "HamProgramAutoUpdate.exe"
+; Must match TaskSchedulerService.DashboardTaskPath exactly.
+#define DashboardTaskPath "\My Update Programs\Updater Dashboard"
 
 ; Overridable from the command line: iscc /DMyAppVersion=1.2.0 ...
 #ifndef MyAppVersion
@@ -133,12 +135,27 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--install-updates-task"; \
     StatusMsg: "Creating the daily update-check scheduled task..."; \
     Flags: runhidden waituntilterminated; Tasks: updatestask
 
-; shellexec: the app's manifest requires administrator, and "nowait" makes
-; Setup launch it as the de-elevated original user (via explorer's token) so
-; it doesn't linger elevated - CreateProcess can't satisfy that manifest's
-; elevation requirement itself (fails with code 740), only ShellExecute can.
+; Prefer relaunching through the "Updater Dashboard" scheduled task (just
+; created above, if startuptask was checked): it runs "with highest
+; privileges", and Task Scheduler elevates that non-interactively - no UAC
+; prompt at all, the same way "Program Update Scripts" already runs silently.
+; This is NOT the same call as {app}\{#MyAppExeName} directly - launching the
+; exe itself needs ShellExecute (CreateProcess fails with code 740 against a
+; requireAdministrator manifest), and since Setup itself is already elevated,
+; a same-process ShellExecute would normally just inherit that with no
+; prompt too - but a bug here previously used "nowait", which for a shellexec
+; entry hands the launch off to Explorer's own (non-elevated) token instead
+; of Setup's, so the app's manifest then demands a *second* UAC prompt that's
+; easy to miss right after Setup's own window closes (confirmed as the cause
+; of the app not auto-starting after a self-update). The scheduled task
+; avoids that whole problem; falling back to the old direct-launch entry
+; below only if that task was never created (startuptask left unchecked).
+Filename: "{sys}\schtasks.exe"; Parameters: "/Run /TN ""{#DashboardTaskPath}"""; \
+    Description: "Launch the dashboard now"; \
+    Flags: postinstall skipifsilent runhidden nowait; Check: DashboardTaskExists
+
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch the dashboard now"; \
-    Flags: postinstall nowait skipifsilent shellexec
+    Flags: postinstall nowait skipifsilent shellexec; Check: not DashboardTaskExists
 
 [UninstallDelete]
 ; Logs are recreated on every run and carry no history of their own (the
@@ -161,6 +178,17 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--remove-updates-task"; \
     Flags: runhidden waituntilterminated; RunOnceId: "RemoveUpdaterTask"
 
 [Code]
+
+// Whether the "Updater Dashboard" scheduled task exists on this machine -
+// see the [Run] section comment for why the postinstall launch prefers it.
+function DashboardTaskExists(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\schtasks.exe'), '/Query /TN "{#DashboardTaskPath}"',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := (ResultCode = 0);
+end;
 
 // Stop a running instance before installing or uninstalling, otherwise the
 // exe is locked and the file copy fails.

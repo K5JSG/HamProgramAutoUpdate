@@ -18,9 +18,9 @@
          when WinForms is enabled. -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
-    <Version>1.2.6</Version>
-    <FileVersion>1.2.6.0</FileVersion>
-    <AssemblyVersion>1.2.6.0</AssemblyVersion>
+    <Version>1.2.7</Version>
+    <FileVersion>1.2.7.0</FileVersion>
+    <AssemblyVersion>1.2.7.0</AssemblyVersion>
     <Company>K5JSG</Company>
     <Product>Ham Program Auto Update</Product>
     <Description>Monitors and runs the ham radio program update scripts.</Description>
