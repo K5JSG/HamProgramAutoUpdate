@@ -16,7 +16,7 @@ N1MM Logger+, NetLogger, POTA Activator, RT Systems, TQSL and WSJT-X.
 Download `HamProgramAutoUpdate-x.y.z-setup.exe` from
 [Releases](../../releases) and run it.
 
-The installer puts the app in `C:\Program Files\HamProgramAutoUpdate`, adds it to
+The installer puts the app in `C:\Program Files\K5JSG\HamProgramAutoUpdate`, adds it to
 Add/Remove Programs, and offers to create a scheduled task so it starts with
 Windows.
 

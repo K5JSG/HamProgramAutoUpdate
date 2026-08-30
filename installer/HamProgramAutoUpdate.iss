@@ -20,7 +20,7 @@
 
 ; Overridable from the command line: iscc /DMyAppVersion=1.2.0 ...
 #ifndef MyAppVersion
-  #define MyAppVersion "1.2.1"
+  #define MyAppVersion "1.2.8"
 #endif
 
 [Setup]
@@ -36,7 +36,14 @@ AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
 VersionInfoVersion={#MyAppVersion}
 
-DefaultDirName={autopf}\{#MyAppShortName}
+DefaultDirName={autopf}\{#MyAppPublisher}\{#MyAppShortName}
+; Older versions installed directly under {autopf}\HamProgramAutoUpdate.
+; AppId stays the same across versions (by design, so Windows treats this as
+; an upgrade), which would otherwise make Setup silently keep reusing that
+; old location forever instead of the new K5JSG subfolder above. This forces
+; every install/upgrade onto DefaultDirName; RemoveLegacyInstall in [Code]
+; below deletes the old folder itself if one is found there.
+UsePreviousAppDir=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 DisableDirPage=no
@@ -205,6 +212,58 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   StopRunningApp();
   Result := '';
+end;
+
+// Looks up where this AppId is currently registered as installed (works
+// whether that was the old default path or a directory the user picked
+// themselves), independent of DefaultDirName/UsePreviousAppDir above.
+function GetRegisteredInstallDir(): String;
+var
+  Dir: String;
+begin
+  Result := '';
+  if RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7C4F1B62-2E5D-4A93-9F7C-8B6D3A1E5C40}_is1',
+       'InstallLocation', Dir) then
+    Result := Dir;
+end;
+
+// One-time migration to the new {autopf}\K5JSG\HamProgramAutoUpdate layout:
+// if a previous version is still sitting at whatever folder it was
+// registered under, remove its scheduled tasks (via its own exe, the same
+// way [UninstallRun] does) and delete that folder, so nothing is left
+// behind at the old location and the fresh install below lands cleanly in
+// the new one. A no-op once every machine has migrated.
+procedure RemoveLegacyInstall();
+var
+  OldDir, NewDir, OldExe: String;
+  ResultCode: Integer;
+begin
+  OldDir := GetRegisteredInstallDir();
+  if OldDir = '' then
+    Exit;
+  if OldDir[Length(OldDir)] = '\' then
+    Delete(OldDir, Length(OldDir), 1);
+
+  NewDir := ExpandConstant('{autopf}\{#MyAppPublisher}\{#MyAppShortName}');
+  if (CompareText(OldDir, NewDir) = 0) or (not DirExists(OldDir)) then
+    Exit;
+
+  StopRunningApp();
+
+  OldExe := OldDir + '\{#MyAppExeName}';
+  if FileExists(OldExe) then
+  begin
+    Exec(OldExe, '--remove-task', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(OldExe, '--remove-updates-task', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+
+  DelTree(OldDir, True, True, True);
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  RemoveLegacyInstall();
+  Result := True;
 end;
 
 function InitializeUninstall(): Boolean;
