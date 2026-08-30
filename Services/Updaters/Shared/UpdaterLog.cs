@@ -90,22 +90,3 @@ public class UpdaterLog : IDisposable
         }
     }
 }
-
-/// <summary>
-/// RT Systems' log uses a different header (50 "=" chars, a colon after
-/// "RUN") that Services/LogParser.cs's RtHeader regex specifically expects -
-/// see LogParser.ParseRuns, which special-cases this format before falling
-/// back to the generic Headers patterns every other program uses.
-/// </summary>
-public sealed class RtSystemsLog : UpdaterLog
-{
-    public RtSystemsLog(string logPath) : base(logPath) { }
-
-    protected override void WriteHeader(string programName)
-    {
-        var bar = new string('=', 50);
-        Writer!.WriteLine(bar);
-        Writer.WriteLine($"RT SYSTEMS GLOBAL UPDATE RUN: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        Writer.WriteLine(bar);
-    }
-}

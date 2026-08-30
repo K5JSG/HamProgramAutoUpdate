@@ -22,10 +22,6 @@ public sealed class RtSystemsUpdater : UpdaterBase
     {
     }
 
-    /// <summary>Emits the different 50-"=" / colon header LogParser.RtHeader
-    /// expects, instead of the generic 40-"=" header every other program uses.</summary>
-    public override UpdaterLog CreateLog(string logPath) => new RtSystemsLog(logPath);
-
     private static DetectedTarget DetectRtSystems() =>
         Directory.Exists(BaseDir) && FindUpdaters().Any()
             ? DetectedTarget.Found(BaseDir)
@@ -67,14 +63,14 @@ public sealed class RtSystemsUpdater : UpdaterBase
         if (updaters.Count == 0)
         {
             ctx.Log.Line("No RT Systems module updaters found - skipping.");
-            ctx.Log.Line($"Global update run completed at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            ctx.Log.Line("RT Systems Updater completed successfully");
             return UpdateResult.Skipped("No modules found");
         }
 
         if (ctx.DryRun)
         {
             ctx.Log.Line($"Dry run - would run {updaters.Count} module updater(s).");
-            ctx.Log.Line($"Global update run completed at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            ctx.Log.Line("Update Check Finished (dry run).");
             return UpdateResult.UpToDate("Dry run");
         }
 
@@ -132,11 +128,13 @@ public sealed class RtSystemsUpdater : UpdaterBase
             suppressor.Stop();
         }
 
-        ctx.Log.Line($"Global update run completed at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-
         if (failedCount > 0 && updatedCount == 0)
+        {
+            ctx.Log.Line($"RT Systems Updater FAILED: {failedCount} module(s) failed to run");
             return UpdateResult.Failed($"{failedCount} module(s) failed to run");
+        }
 
+        ctx.Log.Line("RT Systems Updater completed successfully");
         return updatedCount > 0
             ? UpdateResult.Updated(updatedCount.ToString(), $"{updatedCount} module(s) updated, {failedCount} failed")
             : UpdateResult.UpToDate($"{failedCount} failed");

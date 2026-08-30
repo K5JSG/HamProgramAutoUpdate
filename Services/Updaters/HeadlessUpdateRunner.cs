@@ -27,8 +27,15 @@ public static class HeadlessUpdateRunner
     /// HttpClient.Timeout or a passed CancellationToken, since the hang
     /// happens below the managed network stack. Without this, one bad
     /// program would block the entire nightly scheduled task forever.
+    ///
+    /// 15 minutes rather than 10: CHIRP's browser-automation path (Cloudflare
+    /// challenge wait/clicking plus an in-browser ~20MB download) can
+    /// legitimately need most of that on a slow connection - observed
+    /// directly, not hung, just slow - and every other program's own
+    /// check/download/install finishes in well under a minute regardless, so
+    /// this only changes how long a genuinely stuck one is allowed to run.
     /// </summary>
-    private static readonly TimeSpan HardTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan HardTimeout = TimeSpan.FromMinutes(15);
 
     /// <summary>
     /// UseProxy = false skips Windows' WPAD/proxy auto-detection entirely.
@@ -73,6 +80,44 @@ public static class HeadlessUpdateRunner
         }
 
         return anyFailed ? 1 : 0;
+    }
+
+    /// <summary>Dry-run check of a single program, live network/detection
+    /// included but nothing downloaded or installed - the single-program
+    /// counterpart to --check-updates, useful for validating one updater
+    /// (e.g. CHIRP's browser automation) without touching every program.</summary>
+    public static async Task<int> CheckOneAsync(string key)
+    {
+        var entry = UpdaterCatalog.Find(key);
+        var updater = UpdaterRegistry.Find(key);
+        if (entry is null || updater is null)
+        {
+            Console.WriteLine($"Unknown program key: {key}");
+            Console.WriteLine("Valid keys: " + string.Join(", ", UpdaterCatalog.Entries.Select(e => e.Key)));
+            return 1;
+        }
+
+        using var http = NewHttpClient();
+
+        DetectedTarget target;
+        try
+        {
+            target = updater.DetectTarget();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"{entry.DisplayName}: could not detect target program ({ex.Message})");
+            return 1;
+        }
+
+        if (!target.IsInstalled)
+        {
+            Console.WriteLine($"{entry.DisplayName}: not detected on this PC.");
+            return 1;
+        }
+
+        var outcome = await RunSingleAsync(http, entry, updater, dryRun: true, force: false);
+        return outcome == UpdateOutcome.Failed ? 1 : 0;
     }
 
     public static async Task<int> RunOneAsync(string key, bool force)

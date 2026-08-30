@@ -81,11 +81,10 @@ public static class UpdaterCatalog
     }
 
     /// <summary>
-    /// CHIRP's log is copied rather than moved: its updater is an external
-    /// exe (see ChirpUpdater) that keeps writing to this same legacy path
-    /// forever, so ChirpUpdater re-copies it here after every run. Every
-    /// other program's updater now lives in-process and writes straight to
-    /// the consolidated path afterward, so a one-time move is enough.
+    /// One-time move of a pre-existing per-program folder's log into the
+    /// consolidated path. Every program's updater (including CHIRP now - see
+    /// ChirpUpdater's own migration of its other files) writes straight to
+    /// the consolidated path afterward, so this never needs to run twice.
     /// </summary>
     private static void MigrateLegacyLog(UpdaterEntry entry, string consolidatedPath)
     {
@@ -97,8 +96,7 @@ public static class UpdaterCatalog
         try
         {
             Directory.CreateDirectory(LogDir);
-            if (entry.Key == "chirp") File.Copy(legacyPath, consolidatedPath);
-            else File.Move(legacyPath, consolidatedPath);
+            File.Move(legacyPath, consolidatedPath);
         }
         catch (Exception)
         {

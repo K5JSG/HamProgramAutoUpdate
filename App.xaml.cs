@@ -95,6 +95,21 @@ public partial class App : Application
                         Shutdown(exitCode);
                         return;
                     }
+                case "--check-update":
+                    {
+                        // Single-program counterpart to --check-updates: dry
+                        // run, live network/detection included, nothing
+                        // downloaded or installed.
+                        if (args.Length < 2)
+                        {
+                            Console.Error.WriteLine("Usage: --check-update <key>  (e.g. --check-update chirp)");
+                            Shutdown(1);
+                            return;
+                        }
+                        var exitCode = Task.Run(() => Services.Updaters.HeadlessUpdateRunner.CheckOneAsync(args[1])).GetAwaiter().GetResult();
+                        Shutdown(exitCode);
+                        return;
+                    }
             }
         }
 

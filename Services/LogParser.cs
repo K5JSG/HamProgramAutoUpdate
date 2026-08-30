@@ -26,13 +26,6 @@ public static class LogParser
 
     // ---------------------------------------------------------------- headers
 
-    // RT Systems puts the date on its own line after a colon:
-    //     RT SYSTEMS GLOBAL UPDATE RUN
-    //     : 2026-08-16 14:59:38
-    private static readonly Regex RtHeader = new(
-        @"=+\s*RT SYSTEMS GLOBAL UPDATE RUN\s*:?\s*(?<date>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})",
-        Opts);
-
     private static readonly Regex[] Headers =
     {
         new(@"=+\r?\n(?<name>.+?)\s*:?\s*(?<date>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\r?\n=+", Opts),
@@ -217,19 +210,6 @@ public static class LogParser
     {
         var runs = new List<RunInfo>();
 
-        var rtMatches = RtHeader.Matches(content);
-        if (rtMatches.Count > 0)
-        {
-            for (int i = 0; i < rtMatches.Count; i++)
-            {
-                int start = rtMatches[i].Index;
-                int end = i + 1 < rtMatches.Count ? rtMatches[i + 1].Index : content.Length;
-                var run = ParseRtRun(content[start..end], rtMatches[i].Groups["date"].Value);
-                if (run is not null) runs.Add(run);
-            }
-            return runs;
-        }
-
         foreach (var header in Headers)
         {
             var matches = header.Matches(content);
@@ -321,48 +301,6 @@ public static class LogParser
             Timestamp = runTime,
             Status = status,
             UpdateTime = updateTime,
-            Error = error,
-            LineCount = lines.Length,
-        };
-    }
-
-    private static RunInfo? ParseRtRun(string block, string headerDate)
-    {
-        var lines = block.Trim().Split('\n');
-        if (lines.Length == 0) return null;
-
-        var status = RunStatus.Running;
-        string? error = null;
-        bool hasUpdate = false, hasFailure = false;
-
-        foreach (var raw in lines)
-        {
-            var line = raw.TrimEnd('\r');
-
-            if (line.Contains("UPDATED (Files modified:", StringComparison.OrdinalIgnoreCase))
-            {
-                hasUpdate = true;
-                status = RunStatus.Success;
-            }
-            else if (line.Contains("FAILED TO RUN", StringComparison.OrdinalIgnoreCase))
-            {
-                hasFailure = true;
-                status = RunStatus.Failed;
-                error = line.Trim();
-            }
-            else if (line.Contains("Global update run completed at:", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!hasUpdate && !hasFailure) status = RunStatus.Success;
-            }
-        }
-
-        var runTime = ParseFull(headerDate);
-
-        return new RunInfo
-        {
-            Timestamp = runTime,
-            Status = status,
-            UpdateTime = hasUpdate ? runTime : null,
             Error = error,
             LineCount = lines.Length,
         };

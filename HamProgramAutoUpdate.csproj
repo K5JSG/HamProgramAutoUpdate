@@ -18,9 +18,9 @@
          when WinForms is enabled. -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
-    <Version>1.1.1</Version>
-    <FileVersion>1.1.1.0</FileVersion>
-    <AssemblyVersion>1.1.1.0</AssemblyVersion>
+    <Version>1.2.0</Version>
+    <FileVersion>1.2.0.0</FileVersion>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
     <Company>K5JSG</Company>
     <Product>Ham Program Auto Update</Product>
     <Description>Monitors and runs the ham radio program update scripts.</Description>
@@ -47,22 +47,23 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- CHIRP is the one program whose updater still runs as a bundled
-         Python exe rather than an in-process C# implementation - see
-         Services/Updaters/Programs/ChirpUpdater.cs for why (archive.chirpmyradio.com
-         sits behind a Cloudflare challenge that a real C# browser-automation
-         port could not reliably clear; see the class doc comment for the
-         two independent, non-coordinate-tuning-fixable blockers found).
-         Shipped as a sibling file next to HamProgramAutoUpdate.exe so it
-         travels with this app's own install rather than depending on a
-         separate folder the user maintains independently. -->
-    <!-- ExcludeFromSingleFile: without this, PublishSingleFile bundles
-         content items INTO the single exe and extracts them to a temp
-         cache at runtime instead of leaving them on disk next to it,
-         which breaks the sibling-file path ChirpUpdater.cs looks for
-         (and the installer's own file copy). This keeps it a real,
-         separate file next to HamProgramAutoUpdate.exe in every build. -->
-    <None Include="ChirpUpdaterBinary\Chirp Update Script.exe">
+    <!-- CHIRP's updater runs in-process now (Services/Updaters/Programs/Chirp/
+         ChirpCloudflareAutomation.cs - a native port of the old bundled Python
+         exe's technique; see ChirpUpdater.cs's class doc comment). The only
+         thing it still needs from disk is the learned Cloudflare Turnstile
+         checkbox position, read from its own folder (ChirpUpdaterBinary\,
+         next to HamProgramAutoUpdate.exe) at runtime.
+         Sourced from ChirpUpdaterSource\ (where it's version-controlled,
+         alongside the old Python implementation kept there as a fallback -
+         see that folder's README.txt) rather than ChirpUpdaterBinary\ itself,
+         which is entirely gitignored as a build/runtime-only folder.
+         ExcludeFromSingleFile: without this, PublishSingleFile bundles
+         content items INTO the single exe and extracts them to a temp cache
+         at runtime instead of leaving them on disk next to it, which breaks
+         the sibling-file path ChirpCloudflareAutomation looks for (and the
+         installer's own file copy). -->
+    <None Include="ChirpUpdaterSource\captcha_coords.json">
+      <Link>ChirpUpdaterBinary\captcha_coords.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>

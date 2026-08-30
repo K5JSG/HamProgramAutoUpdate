@@ -63,7 +63,7 @@ public sealed class N1mmUpdater : UpdaterBase
         if (!target.IsInstalled)
         {
             ctx.Log.Line("N1MM Logger+ is not installed on this PC - skipping.");
-            ctx.Log.Line("--- N1MM Update Check Finished ---");
+            ctx.Log.Line("N1MM Updater completed successfully");
             return UpdateResult.Skipped("Not installed");
         }
 
@@ -91,7 +91,7 @@ public sealed class N1mmUpdater : UpdaterBase
         if (!ctx.Force && !FileVersionHelper.IsNewer(latest, current))
         {
             ctx.Log.Line($"Already up to date (installed {current ?? "unknown"}, latest {latest}).");
-            ctx.Log.Line("--- N1MM Update Check Finished ---");
+            ctx.Log.Line("N1MM Updater completed successfully");
             return UpdateResult.UpToDate();
         }
 
@@ -140,7 +140,7 @@ public sealed class N1mmUpdater : UpdaterBase
             }
 
             ctx.Log.Line($"Success: Upgrade applied successfully to version {latest}!");
-            ctx.Log.Line("--- N1MM Update Check Finished ---");
+            ctx.Log.Line("N1MM Updater completed successfully");
             return UpdateResult.Updated(latest);
         }
         finally
