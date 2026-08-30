@@ -125,6 +125,12 @@ public partial class App : Application
             return;
         }
 
+        // Best-effort: removes any setup exe left behind by a previous
+        // self-update run (see SelfUpdateService.DownloadAndLaunchInstallerAsync -
+        // the app shuts down right after launching that installer, so this is
+        // the first opportunity to clean it up).
+        SelfUpdateService.CleanupOldDownloads();
+
         Runner = new UpdaterRunner();
         Status = new StatusService(Runner);
 

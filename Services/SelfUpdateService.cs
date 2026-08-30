@@ -29,6 +29,37 @@ public static class SelfUpdateService
     private static readonly Uri LatestReleaseUri =
         new($"https://api.github.com/repos/{Owner}/{Repo}/releases/latest");
 
+    /// <summary>
+    /// Where a downloaded setup exe is staged before being launched. Kept
+    /// under this app's own LocalAppData folder (alongside update_history.json)
+    /// rather than the Windows temp folder so a user only ever needs one
+    /// antivirus/Norton 360 folder exclusion for this app's own downloads,
+    /// not a blanket exclusion on the shared system temp directory.
+    /// </summary>
+    private static string DownloadDir => Path.Combine(HistoryStore.StateDir, "Updates");
+
+    /// <summary>
+    /// Deletes any setup exe left behind by a previous update. The app
+    /// shuts itself down immediately after launching the installer (see
+    /// DownloadAndLaunchInstallerAsync), so that file can only ever be
+    /// cleaned up on a later run - this is called once at startup, by
+    /// which point either the old version's installer has already finished
+    /// (this process IS the result of it) or the update was abandoned and
+    /// the leftover file is simply stale. Never throws.
+    /// </summary>
+    public static void CleanupOldDownloads()
+    {
+        try
+        {
+            if (!Directory.Exists(DownloadDir)) return;
+            foreach (var file in Directory.EnumerateFiles(DownloadDir))
+            {
+                try { File.Delete(file); } catch (Exception) { }
+            }
+        }
+        catch (Exception) { }
+    }
+
     private sealed class GhAsset
     {
         [JsonPropertyName("name")]
@@ -122,17 +153,18 @@ public static class SelfUpdateService
             progress?.Report("Downloading update...");
 
             using var http = NewHttpClient(TimeSpan.FromMinutes(5));
-            var tempPath = Path.Combine(Path.GetTempPath(), release.AssetName);
+            Directory.CreateDirectory(DownloadDir);
+            var downloadPath = Path.Combine(DownloadDir, release.AssetName);
 
             using (var response = await http.GetAsync(release.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct))
             {
                 response.EnsureSuccessStatusCode();
-                await using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write);
+                await using var fs = new FileStream(downloadPath, FileMode.Create, FileAccess.Write);
                 await response.Content.CopyToAsync(fs, ct);
             }
 
             progress?.Report("Launching installer...");
-            Process.Start(new ProcessStartInfo { FileName = tempPath, UseShellExecute = true });
+            Process.Start(new ProcessStartInfo { FileName = downloadPath, UseShellExecute = true });
 
             return null;
         }
