@@ -4,6 +4,16 @@ using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services;
 
+/// <summary>Abstraction over <see cref="UpdaterRunner"/> so callers (MainWindow,
+/// StatusService, and any future test) depend on this contract rather than the
+/// concrete class, which owns a real HttpClient and launches real updaters.</summary>
+public interface IUpdaterRunner : IDisposable
+{
+    bool IsRunning(string key);
+    bool AnyRunning();
+    string? Run(string key);
+}
+
 /// <summary>
 /// Runs one program's in-process updater (see Services/Updaters) on a
 /// background task and keeps track of whether it is still running, so the
@@ -15,7 +25,7 @@ namespace HamProgramAutoUpdate.Services;
 /// Same public contract as before, so MainWindow.xaml.cs and the tray menu
 /// need no changes.
 /// </summary>
-public sealed class UpdaterRunner : IDisposable
+public sealed class UpdaterRunner : IUpdaterRunner
 {
     /// <summary>Hard ceiling on one program's whole run - see the identical
     /// constant in HeadlessUpdateRunner for why this exists: some hangs

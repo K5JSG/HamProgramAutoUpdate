@@ -22,7 +22,7 @@ public static class LogParser
 
     /// <summary>A run with no closing line whose log has been idle this long
     /// is treated as failed rather than still running.</summary>
-    public static TimeSpan StalledRunThreshold { get; set; } = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan StalledRunThreshold = TimeSpan.FromMinutes(15);
 
     // ---------------------------------------------------------------- headers
 

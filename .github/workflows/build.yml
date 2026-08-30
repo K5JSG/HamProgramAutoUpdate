@@ -1,0 +1,28 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore HamProgramAutoUpdate.slnx
+
+      - name: Build
+        run: dotnet build HamProgramAutoUpdate.slnx --no-restore -c Debug
+
+      - name: Test
+        run: dotnet test HamProgramAutoUpdate.slnx --no-build -c Debug --logger "console;verbosity=normal"

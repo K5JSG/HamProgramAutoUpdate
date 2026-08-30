@@ -51,7 +51,15 @@ public static class TaskSchedulerService
 
             var stdout = proc.StandardOutput.ReadToEnd();
             var stderr = proc.StandardError.ReadToEnd();
-            proc.WaitForExit(30_000);
+
+            if (!proc.WaitForExit(30_000))
+            {
+                // schtasks reliably returns well within this, so a timeout
+                // means it's genuinely stuck - don't leave it running
+                // orphaned in the background.
+                try { proc.Kill(entireProcessTree: true); } catch (Exception) { }
+                return (-1, stdout, "schtasks.exe did not respond within 30 seconds and was terminated.");
+            }
 
             return (proc.ExitCode, stdout, stderr);
         }

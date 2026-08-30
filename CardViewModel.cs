@@ -24,6 +24,15 @@ public sealed class CardViewModel
     private static readonly Brush RecentFill = new SolidColorBrush(Color.FromArgb(0x1F, 0x00, 0xD4, 0xAA));
     private static readonly Brush RecentBorder = new SolidColorBrush(Color.FromArgb(0x80, 0x00, 0xD4, 0xAA));
 
+    // Same colors as Accent/Danger/Warn/Muted above, just with a translucent
+    // fill alpha - cached the same way so StatusFill doesn't allocate a fresh
+    // SolidColorBrush on every single binding evaluation (every card, every
+    // 3-30s refresh tick).
+    private static readonly Brush SuccessFill = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0xD4, 0xAA));
+    private static readonly Brush FailedFill = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0x47, 0x57));
+    private static readonly Brush RunningFill = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xC3, 0x00));
+    private static readonly Brush UnknownFill = new SolidColorBrush(Color.FromArgb(0x33, 0x88, 0x88, 0x88));
+
     /// <summary>An update within this many calendar days is highlighted.</summary>
     public const int RecentDays = 3;
 
@@ -39,7 +48,8 @@ public sealed class CardViewModel
     {
         // Freezing shared brushes lets WPF reuse them across cards
         foreach (var b in new[] { Accent, AccentBright, Danger, Warn, Muted, Dim, Text,
-                                  PanelFill, PanelBorder, RecentFill, RecentBorder })
+                                  PanelFill, PanelBorder, RecentFill, RecentBorder,
+                                  SuccessFill, FailedFill, RunningFill, UnknownFill })
         {
             if (b.CanFreeze && !b.IsFrozen) b.Freeze();
         }
@@ -70,10 +80,10 @@ public sealed class CardViewModel
 
     public Brush StatusFill => _s.LatestStatus switch
     {
-        RunStatus.Success => new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0xD4, 0xAA)),
-        RunStatus.Failed => new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0x47, 0x57)),
-        RunStatus.Running => new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xC3, 0x00)),
-        _ => new SolidColorBrush(Color.FromArgb(0x33, 0x88, 0x88, 0x88)),
+        RunStatus.Success => SuccessFill,
+        RunStatus.Failed => FailedFill,
+        RunStatus.Running => RunningFill,
+        _ => UnknownFill,
     };
 
     // -------------------------------------------------------------- dates

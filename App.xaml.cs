@@ -15,8 +15,8 @@ public partial class App : Application
     private MainWindow? _window;
     private Mutex? _singleInstance;
 
-    public static StatusService Status { get; private set; } = null!;
-    public static UpdaterRunner Runner { get; private set; } = null!;
+    public static IStatusService Status { get; private set; } = null!;
+    public static IUpdaterRunner Runner { get; private set; } = null!;
 
     protected override void OnStartup(StartupEventArgs e)
     {

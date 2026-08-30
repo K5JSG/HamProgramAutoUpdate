@@ -346,7 +346,11 @@ public sealed class PotaUpdaterConfig
             if (File.Exists(FilePath))
             {
                 var loaded = JsonSerializer.Deserialize<PotaUpdaterConfig>(File.ReadAllText(FilePath));
-                if (loaded is not null) return loaded;
+                if (loaded is not null)
+                {
+                    MigrateTokenAtRest(loaded);
+                    return loaded;
+                }
             }
         }
         catch (Exception)
@@ -355,6 +359,41 @@ public sealed class PotaUpdaterConfig
         }
 
         return new PotaUpdaterConfig();
+    }
+
+    /// <summary>
+    /// This file has no UI - a GitHubToken is hand-entered by editing the
+    /// JSON directly, so it starts out as plaintext. The first Load() after
+    /// that encrypts it at rest with DPAPI (tied to this Windows user and
+    /// machine) and rewrites the file, then leaves the plaintext value in
+    /// memory either way, so callers (FetchLatestReleaseAsync) never need to
+    /// know which form was actually on disk.
+    /// </summary>
+    private static void MigrateTokenAtRest(PotaUpdaterConfig config)
+    {
+        if (string.IsNullOrEmpty(config.GitHubToken)) return;
+
+        if (DpapiProtector.IsProtected(config.GitHubToken))
+        {
+            config.GitHubToken = DpapiProtector.Unprotect(config.GitHubToken);
+            return;
+        }
+
+        var plaintext = config.GitHubToken;
+        try
+        {
+            config.GitHubToken = DpapiProtector.Protect(plaintext);
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception)
+        {
+            // Best-effort: the token still works from memory this run even if
+            // the at-rest upgrade didn't stick - it'll just retry next Load().
+        }
+        finally
+        {
+            config.GitHubToken = plaintext;
+        }
     }
 }
 

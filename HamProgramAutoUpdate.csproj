@@ -18,9 +18,9 @@
          when WinForms is enabled. -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
-    <Version>1.2.5</Version>
-    <FileVersion>1.2.5.0</FileVersion>
-    <AssemblyVersion>1.2.5.0</AssemblyVersion>
+    <Version>1.2.6</Version>
+    <FileVersion>1.2.6.0</FileVersion>
+    <AssemblyVersion>1.2.6.0</AssemblyVersion>
     <Company>K5JSG</Company>
     <Product>Ham Program Auto Update</Product>
     <Description>Monitors and runs the ham radio program update scripts.</Description>
@@ -44,6 +44,16 @@
 
   <ItemGroup>
     <Resource Include="Resources\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Tests/ holds its own separate test project (see the .slnx) - without
+         this, this project's default recursive file glob would also try to
+         compile its source (and generated obj/ files) into itself, the same
+         issue the sibling POTA project solves for its own Tools/ folder. -->
+    <Compile Remove="Tests\**" />
+    <EmbeddedResource Remove="Tests\**" />
+    <None Remove="Tests\**" />
   </ItemGroup>
 
   <ItemGroup>

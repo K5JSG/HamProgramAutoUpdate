@@ -7,16 +7,28 @@ using HamProgramAutoUpdate.Services.Updaters;
 
 namespace HamProgramAutoUpdate.Services;
 
+/// <summary>Abstraction over <see cref="StatusService"/> so callers (MainWindow,
+/// and any future test) depend on this contract rather than the concrete
+/// class - the concrete class talks to the real filesystem/registry, which a
+/// unit test would want to substitute.</summary>
+public interface IStatusService
+{
+    HistoryStore History { get; }
+    List<ProgramStatus> GetAll(bool includeUnavailable = false);
+    (bool ok, string? error) ClearLog(string key);
+    (int cleared, List<string> failed) ClearAllLogs();
+}
+
 /// <summary>
 /// Pulls together the log parser, the update history and the running-process
 /// tracker into the list of cards the window shows.
 /// </summary>
-public sealed class StatusService
+public sealed class StatusService : IStatusService
 {
     private readonly HistoryStore _history = new();
-    private readonly UpdaterRunner _runner;
+    private readonly IUpdaterRunner _runner;
 
-    public StatusService(UpdaterRunner runner) => _runner = runner;
+    public StatusService(IUpdaterRunner runner) => _runner = runner;
 
     public HistoryStore History => _history;
 

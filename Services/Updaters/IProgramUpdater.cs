@@ -28,7 +28,7 @@ public sealed class UpdateResult
     public static UpdateResult UpToDate(string? message = null) =>
         new() { Outcome = UpdateOutcome.UpToDate, Message = message };
 
-    public static UpdateResult Updated(string version, string? message = null) =>
+    public static UpdateResult Updated(string? version, string? message = null) =>
         new() { Outcome = UpdateOutcome.Updated, NewVersion = version, Message = message };
 
     public static UpdateResult Failed(string message) =>

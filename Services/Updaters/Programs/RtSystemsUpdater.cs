@@ -140,8 +140,12 @@ public sealed class RtSystemsUpdater : UpdaterBase
         }
 
         ctx.Log.Line("RT Systems Updater completed successfully");
+        // NewVersion is left null here - RT Systems' per-module updaters don't
+        // report a version at all (see the class doc comment), so there is no
+        // real version string to put in that field. The module count belongs
+        // in Message only.
         return updatedCount > 0
-            ? UpdateResult.Updated(updatedCount.ToString(), $"{updatedCount} module(s) updated, {failedCount} failed")
+            ? UpdateResult.Updated(null, $"{updatedCount} module(s) updated, {failedCount} failed")
             : UpdateResult.UpToDate($"{failedCount} failed");
     }
 

@@ -1,3 +1,6 @@
-﻿<Solution>
+<Solution>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/HamProgramAutoUpdate.Tests/HamProgramAutoUpdate.Tests.csproj" />
+  </Folder>
   <Project Path="HamProgramAutoUpdate.csproj" />
 </Solution>
