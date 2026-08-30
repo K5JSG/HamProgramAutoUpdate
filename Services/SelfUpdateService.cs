@@ -39,25 +39,41 @@ public static class SelfUpdateService
     private static string DownloadDir => Path.Combine(HistoryStore.StateDir, "Updates");
 
     /// <summary>
-    /// Deletes any setup exe left behind by a previous update. The app
-    /// shuts itself down immediately after launching the installer (see
-    /// DownloadAndLaunchInstallerAsync), so that file can only ever be
-    /// cleaned up on a later run - this is called once at startup, by
-    /// which point either the old version's installer has already finished
-    /// (this process IS the result of it) or the update was abandoned and
-    /// the leftover file is simply stale. Never throws.
+    /// Where Setup.exe itself is pointed to self-extract into (see
+    /// DownloadAndLaunchInstallerAsync) instead of the shared Windows temp
+    /// folder - same reasoning as DownloadDir: one antivirus exclusion
+    /// covers everything this app's update flow ever touches on disk.
+    /// </summary>
+    private static string InstallTempDir => Path.Combine(HistoryStore.StateDir, "InstallTemp");
+
+    /// <summary>
+    /// Deletes any setup exe and self-extracted install files left behind by
+    /// a previous update. The app shuts itself down immediately after
+    /// launching the installer (see DownloadAndLaunchInstallerAsync), so
+    /// these can only ever be cleaned up on a later run - this is called
+    /// once at startup, by which point either the old version's installer
+    /// has already finished (this process IS the result of it) or the
+    /// update was abandoned and the leftovers are simply stale. Never throws.
     /// </summary>
     public static void CleanupOldDownloads()
     {
-        try
+        foreach (var dir in new[] { DownloadDir, InstallTempDir })
         {
-            if (!Directory.Exists(DownloadDir)) return;
-            foreach (var file in Directory.EnumerateFiles(DownloadDir))
+            try
             {
-                try { File.Delete(file); } catch (Exception) { }
+                if (!Directory.Exists(dir)) continue;
+                foreach (var entry in Directory.EnumerateFileSystemEntries(dir))
+                {
+                    try
+                    {
+                        if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
+                        else File.Delete(entry);
+                    }
+                    catch (Exception) { }
+                }
             }
+            catch (Exception) { }
         }
-        catch (Exception) { }
     }
 
     private sealed class GhAsset
@@ -164,13 +180,44 @@ public static class SelfUpdateService
             }
 
             progress?.Report("Launching installer...");
-            Process.Start(new ProcessStartInfo { FileName = downloadPath, UseShellExecute = true });
+            LaunchWithRedirectedTempDir(downloadPath);
 
             return null;
         }
         catch (Exception ex)
         {
             return ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Launches Setup.exe with TMP/TEMP pointed at InstallTempDir for just
+    /// this call, so Inno Setup's own self-extraction (which picks its
+    /// "is-XXXXXXXX.tmp" working folder via Win32 GetTempPath - TMP checked
+    /// first, then TEMP) lands there instead of the shared Windows temp
+    /// folder. UseShellExecute here does not hand the child a fresh
+    /// environment block of its own - it inherits the calling process's, and
+    /// since this app's own manifest already requires admin the same as
+    /// Setup.exe's, no separate UAC elevation broker hop (which could hand
+    /// the child a different default environment) is involved. Restored
+    /// immediately after starting the process so nothing else in this
+    /// process is affected by the redirected TMP/TEMP once launched.
+    /// </summary>
+    private static void LaunchWithRedirectedTempDir(string exePath)
+    {
+        Directory.CreateDirectory(InstallTempDir);
+
+        var (prevTmp, prevTemp) = (Environment.GetEnvironmentVariable("TMP"), Environment.GetEnvironmentVariable("TEMP"));
+        try
+        {
+            Environment.SetEnvironmentVariable("TMP", InstallTempDir);
+            Environment.SetEnvironmentVariable("TEMP", InstallTempDir);
+            Process.Start(new ProcessStartInfo { FileName = exePath, UseShellExecute = true });
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TMP", prevTmp);
+            Environment.SetEnvironmentVariable("TEMP", prevTemp);
         }
     }
 }
