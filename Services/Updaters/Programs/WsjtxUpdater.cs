@@ -14,20 +14,49 @@ namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 /// (confirmed against one specific machine's layout); this port also checks
 /// the default Program Files\WSJT-X location so it isn't tied to that one
 /// custom layout.
+///
+/// C:\WSJT\wsjtx\bin\wsjtx.exe - the first candidate path checked - is also
+/// WSJT-X Improved's own default install location and exe filename (see
+/// WsjtxImprovedUpdater). Confirmed live: installing that fork with no
+/// explicit /D= override silently overwrote a real WSJT-X install sitting
+/// at that exact path. Its exe's own ProductName resource reliably says
+/// "WSJT-X-improved" though (real WSJT-X's just says "WSJT-X"), so
+/// DetectRealWsjtx skips any candidate that isn't the real thing rather
+/// than risk this updater "updating" WSJT-X Improved with a genuine WSJT-X
+/// build, or vice versa - a plain TargetDetectors.FixedPaths can't tell.
 /// </summary>
 public sealed class WsjtxUpdater : UpdaterBase
 {
     private const string ReleasesRssUrl = "https://sourceforge.net/projects/wsjt/rss?path=/";
 
-    private static readonly Regex ReleaseFolderRegex = new(
-        @"/wsjtx-(?<ver>\d+\.\d+\.\d+)(?<rc>-rc\d+)?/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    public WsjtxUpdater() : base("wsjtx", "WSJT-X", TargetDetectors.FixedPaths(
+    private static readonly string[] CandidatePaths =
+    {
         @"C:\WSJT\wsjtx\bin\wsjtx.exe",
         @"C:\Program Files\WSJT-X\bin\wsjtx.exe",
         @"C:\Program Files\WSJT-X\wsjtx.exe",
-        @"C:\Program Files (x86)\WSJT-X\wsjtx.exe"))
+        @"C:\Program Files (x86)\WSJT-X\wsjtx.exe",
+    };
+
+    private static readonly Regex ReleaseFolderRegex = new(
+        @"/wsjtx-(?<ver>\d+\.\d+\.\d+)(?<rc>-rc\d+)?/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public WsjtxUpdater() : base("wsjtx", "WSJT-X", DetectRealWsjtx)
     {
+    }
+
+    private static DetectedTarget DetectRealWsjtx()
+    {
+        foreach (var path in CandidatePaths)
+        {
+            if (!File.Exists(path)) continue;
+
+            var productName = FileVersionHelper.ReadProductName(path);
+            if (productName is not null && productName.Contains("improved", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return DetectedTarget.Found(path, FileVersionHelper.ReadFileVersion(path));
+        }
+        return DetectedTarget.NotFound;
     }
 
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)

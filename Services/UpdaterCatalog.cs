@@ -48,6 +48,9 @@ public static class UpdaterCatalog
         new("hrd", "Ham Radio Deluxe",
             @"HRD Update Script\HRD_Update_Script.log"),
 
+        new("log4om", "Log4OM",
+            @"Log4OM Update Script\log4om_updater.log"),
+
         new("n1mm", "N1MM Logger+",
             @"N1MM Logger+\N1MM Updater Script\N1MM_Updater.log"),
 
@@ -65,6 +68,9 @@ public static class UpdaterCatalog
 
         new("wsjtx", "WSJT-X",
             @"WSJTX Update Script\wsjtx_updater.log"),
+
+        new("wsjtx_improved", "WSJT-X Improved",
+            @"WSJT-X Improved Update Script\wsjtx_improved_updater.log"),
     };
 
     /// <summary>
