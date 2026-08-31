@@ -13,12 +13,14 @@ public static class UpdaterRegistry
             new ChirpUpdater(),
             new GridTrackerUpdater(),
             new HrdUpdater(),
+            new Log4omUpdater(),
             new N1mmUpdater(),
             new NetLoggerUpdater(),
             new PotaUpdater(),
             new RtSystemsUpdater(),
             new TqslUpdater(),
             new WsjtxUpdater(),
+            new WsjtxImprovedUpdater(),
         }.ToDictionary(u => u.Key);
 
     public static IProgramUpdater? Find(string key) => All.GetValueOrDefault(key);

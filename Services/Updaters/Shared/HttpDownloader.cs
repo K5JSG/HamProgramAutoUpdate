@@ -30,6 +30,20 @@ public static class HttpDownloader
     /// <summary>Downloads to <paramref name="destPath"/>, retrying on
     /// failure, and validates the result looks like a real Windows
     /// installer (exe/msi/zip) rather than an error page.</summary>
+    /// <summary>
+    /// <paramref name="perAttemptTimeout"/> exists because of a real,
+    /// confirmed-live gap: HttpClient.Timeout does NOT reliably bound a
+    /// GetAsync(..., HttpCompletionOption.ResponseHeadersRead, ...) call's
+    /// later CopyToAsync - once headers arrive quickly, the client's own
+    /// SendAsync is considered complete and its Timeout stops applying to
+    /// the still-open response stream. A download stalled by a throttled/
+    /// slow mirror (observed directly: SourceForge trickling one file in at
+    /// ~13KB/s) can then sit forever regardless of how the caller's
+    /// HttpClient.Timeout is configured. This wraps each attempt in its own
+    /// CancellationTokenSource, linked to the caller's token, so a stalled
+    /// attempt is actually cancelled and moves on to the next retry instead
+    /// of hanging indefinitely.
+    /// </summary>
     public static async Task<(bool ok, string? error)> DownloadToFileAsync(
         HttpClient http,
         string url,
@@ -37,21 +51,26 @@ public static class HttpDownloader
         CancellationToken ct,
         int attempts = 4,
         TimeSpan? delayBetweenAttempts = null,
-        long minSizeBytes = 10_000)
+        long minSizeBytes = 10_000,
+        TimeSpan? perAttemptTimeout = null)
     {
         var delay = delayBetweenAttempts ?? TimeSpan.FromSeconds(10);
+        var timeout = perAttemptTimeout ?? TimeSpan.FromMinutes(5);
         Exception? lastError = null;
 
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
+            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            attemptCts.CancelAfter(timeout);
+
             try
             {
-                using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
+                using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token))
                 {
                     response.EnsureSuccessStatusCode();
-                    await using var source = await response.Content.ReadAsStreamAsync(ct);
+                    await using var source = await response.Content.ReadAsStreamAsync(attemptCts.Token);
                     await using var dest = File.Create(destPath);
-                    await source.CopyToAsync(dest, ct);
+                    await source.CopyToAsync(dest, attemptCts.Token);
                 }
 
                 var info = new FileInfo(destPath);
@@ -59,6 +78,15 @@ public static class HttpDownloader
                     throw new IOException($"Downloaded file is only {info.Length} bytes - too small to be real.");
 
                 return (true, null);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Our own per-attempt timeout fired, not the caller's - the
+                // stall this exists for, not a real cancellation request.
+                lastError = new TimeoutException($"Download stalled - no completion within {timeout.TotalSeconds:0}s.");
+                try { if (File.Exists(destPath)) File.Delete(destPath); } catch (Exception) { }
+
+                if (attempt < attempts) await Task.Delay(delay, ct);
             }
             catch (Exception ex)
             {

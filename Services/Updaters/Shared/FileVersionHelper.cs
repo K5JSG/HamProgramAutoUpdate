@@ -22,6 +22,25 @@ public static class FileVersionHelper
         }
     }
 
+    /// <summary>The exe's own ProductName resource - useful when a
+    /// program's install path/exe name alone can't tell it apart from
+    /// something else (see WsjtxUpdater: WSJT-X Improved's installer
+    /// defaults to the exact same path and exe filename as real WSJT-X,
+    /// confirmed live, but each reports a different ProductName).</summary>
+    public static string? ReadProductName(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            var name = FileVersionInfo.GetVersionInfo(path).ProductName;
+            return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Parses a dotted version string, ignoring anything after the
     /// first run of digit-groups (e.g. "1.2.3.0 beta" -> [1,2,3,0]).</summary>
     public static int[]? ParseVersionParts(string? version)
