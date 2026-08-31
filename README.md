@@ -1,13 +1,16 @@
 # Ham Program Auto Update
 
-A Windows tray app that shows, at a glance, when each of your ham radio
-programs last checked for updates and when it was last actually updated.
+A Windows tray app that checks a fixed set of ham radio helper programs for
+updates, installs them silently, and shows at a glance when each one last
+checked and when it was last actually updated.
 
-It does not update anything itself. It reads the logs your existing updater
-scripts write, and can launch them on demand.
+The update logic for every tracked program runs in-process (no external
+updater scripts) - it scrapes each program's own download page, compares
+versions, and downloads and installs silently when one is out of date.
 
-Programs tracked: BktTimeSync, CHIRP, GridTracker, Ham Radio Deluxe,
-N1MM Logger+, NetLogger, POTA Activator, RT Systems, TQSL and WSJT-X.
+Programs tracked: BktTimeSync, CHIRP, GridTracker, Ham Radio Deluxe, Log4OM,
+N1MM Logger+, NetLogger, POTA Activator, RT Systems, TQSL, WSJT-X and
+WSJT-X Improved.
 
 ---
 
@@ -49,15 +52,21 @@ or refresh.
 
 ## Where things live
 
-The dashboard looks for logs and updater programs under:
+Every tracked program's update log lives together under:
 
 ```
-%USERPROFILE%\Documents\Ham Radio\
+%ProgramData%\HamProgramAutoUpdate\Logs\
 ```
 
-Paths resolve per user at runtime, so the same build works on any Windows
-account with no configuration. A program with neither a log nor an updater
-present simply gets no card.
+That is machine-wide, not per-user, because the app runs elevated and the
+scheduled tasks may run under a different session. A handful of programs
+still have per-program state that has to live where the program itself
+expects it to (Log4OM's portable config, WSJT-X's install folder, etc.) -
+`Services/UpdaterCatalog.cs` and each updater in `Services/Updaters/Programs/`
+document those cases individually.
+
+A program's card appears once it has either a log or a detected install; a
+program the dashboard has never seen simply gets no card yet.
 
 Its own record of update dates is kept at:
 
@@ -72,12 +81,15 @@ reinstalls. Clearing a log never loses the update date.
 
 ## Why it needs administrator
 
-Several of the updaters install software through `msiexec` and carry their own
-administrator manifests. A normal process cannot launch them without a UAC
-prompt for each one.
+Installing anything - an MSI via `msiexec`, a silent Inno Setup or NSIS
+installer - normally means a UAC prompt. Since the update logic now runs
+in-process rather than shelling out to separate installer scripts, the
+dashboard itself always runs elevated (its manifest requires it), so every
+program it updates inherits that instead of prompting per program.
 
-The dashboard therefore requests elevation itself, and the updaters it starts
-inherit that. Launched from its scheduled task, there is no prompt at all.
+Launched from its own scheduled task, Task Scheduler elevates it silently
+and there is no prompt at all - the normal path for both the daily
+auto-update run and the app starting at logon.
 
 ---
 
@@ -86,9 +98,9 @@ inherit that. Launched from its scheduled task, there is no prompt at all.
 Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download) and,
 for the installer, [Inno Setup](https://jrsoftware.org/isdl.php) 6 or newer.
 
-`build.ps1` and the `installer\` folder live one level above this repository
-(alongside it, not inside it) - `build.ps1 -Version 1.1.0` publishes the exe
-and, if Inno Setup is found, compiles the installer:
+`build.ps1` and the `installer\` folder are tracked in this repository -
+`build.ps1 -Version 1.1.0` publishes the exe and, if Inno Setup is found,
+compiles the installer:
 
 ```powershell
 .\build.ps1                      # exe + installer
@@ -115,29 +127,42 @@ every push via `.github\workflows\build.yml`).
 ## Releasing
 
 Bump `Version`/`FileVersion`/`AssemblyVersion` in `HamProgramAutoUpdate.csproj`
-and the default `$Version` in `build.ps1`, commit, then:
+and the default `$Version` in `build.ps1`, commit, then push a version tag:
 
 ```powershell
-.\build.ps1
 git tag V1.2.x
 git push origin master V1.2.x
-gh release create V1.2.x dist\HamProgramAutoUpdate-v1.2.x-setup.exe dist\HamProgramAutoUpdate-v1.2.x.exe `
-    --title "Ham Program Auto Update v1.2.x"
 ```
 
-The tag is `V<version>` (capital V); the release title uses lowercase
-`v<version>`. The release must be published (not draft/prerelease) and must
-include an asset ending in `-setup.exe` - that's the exact suffix
-`SelfUpdateService` matches on to find the installer to offer.
+Pushing a `V*.*.*` tag runs `.github\workflows\release.yml` on GitHub
+Actions, which builds the exe and installer itself (via `build.ps1`, same
+as building locally) and publishes the release - no local build or
+`gh release create` needed. It reads the version straight from the tag, so
+the tag and the version bumped into the csproj/build.ps1 above must match.
+
+The tag is `V<version>` (capital V); the release title the workflow
+generates uses lowercase `v<version>`. The workflow always publishes
+immediately (not draft/prerelease) with an asset ending in `-setup.exe` -
+that's the exact suffix `SelfUpdateService` matches on to find the
+installer to offer - plus the standalone exe.
 
 ---
 
 ## Adding a program
 
-Add one entry to `Entries` in
-`Services/UpdaterCatalog.cs`, giving its key, display
-name, log path and updater path relative to `Documents\Ham Radio`. Nothing
-else needs changing - the card appears automatically.
+Three pieces:
+
+1. A new `IProgramUpdater` in `Services/Updaters/Programs/` - detects
+   whether the program is installed (a registry lookup or a fixed path),
+   checks its download page or release feed for the latest version, and
+   downloads and installs silently when out of date. The existing updaters
+   there are the best reference; no two vendors' sites/installers behave
+   quite the same way, so expect to actually run it live against the real
+   target rather than trust it from code review alone.
+2. One entry in `UpdaterRegistry.All` (`Services/Updaters/UpdaterRegistry.cs`).
+3. One entry in `UpdaterCatalog.Entries` (`Services/UpdaterCatalog.cs`) -
+   its key (matching the updater's `Key`), display name, and where its log
+   should live. The card then appears automatically.
 
 If the new updater words its log differently, `LogParser.cs` may need a
 pattern adding. Two rules matter there:
