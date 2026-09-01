@@ -18,12 +18,12 @@
          when WinForms is enabled. -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
-    <Version>1.2.9</Version>
-    <FileVersion>1.2.9.0</FileVersion>
-    <AssemblyVersion>1.2.9.0</AssemblyVersion>
+    <Version>1.3.0</Version>
+    <FileVersion>1.3.0.0</FileVersion>
+    <AssemblyVersion>1.3.0.0</AssemblyVersion>
     <Company>K5JSG</Company>
     <Product>Ham Program Auto Update</Product>
-    <Description>Monitors and runs the ham radio program update scripts.</Description>
+    <Description>Checks a fixed set of ham radio programs for updates and installs them silently.</Description>
     <Copyright>Copyright © 2026 K5JSG - Jeremy Gaynor</Copyright>
   </PropertyGroup>
 

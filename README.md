@@ -65,8 +65,12 @@ expects it to (Log4OM's portable config, WSJT-X's install folder, etc.) -
 `Services/UpdaterCatalog.cs` and each updater in `Services/Updaters/Programs/`
 document those cases individually.
 
-A program's card appears once it has either a log or a detected install; a
-program the dashboard has never seen simply gets no card yet.
+A program's card appears once it's detected as installed (or, failing that,
+once it has a log) and disappears again as soon as it's no longer installed -
+its log and update history stay on disk regardless, so reinstalling it later
+brings the card straight back with its full history intact rather than
+starting blank. A program the dashboard has never seen simply gets no card
+yet.
 
 Its own record of update dates is kept at:
 
