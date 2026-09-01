@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -43,48 +42,21 @@ public sealed class PotaUpdater : UpdaterBase
             if (Directory.Exists(candidate)) installDir = candidate;
         }
 
-        var exe = installDir is { } loc ? FindExeIn(loc, config.ProductName) : null;
+        // This install directory also holds bundled utility exes (e.g.
+        // CleanupObsoleteFiles.exe, dropped by this product's own installer
+        // custom action) whose FileVersion has nothing to do with the
+        // product's real version - see ExeFinder's own doc comment for the
+        // real bug this already caused before it started preferring the exe
+        // matching the product name.
+        var exe = installDir is { } loc ? ExeFinder.FindByProductName(loc, config.ProductName) : null;
         var version = exe is not null ? FileVersionHelper.ReadFileVersion(exe) : entry.DisplayVersion;
         return DetectedTarget.Found(exe ?? installDir, version);
-    }
-
-    /// <summary>Picks the exe whose name matches the product itself, not just
-    /// any non-uninstaller exe in the folder - this install directory also
-    /// holds bundled utility exes (e.g. CleanupObsoleteFiles.exe, dropped by
-    /// this product's own installer custom action) whose FileVersion has
-    /// nothing to do with the product's real version. Falls back to the old
-    /// "first non-uninstall exe" behavior only if no name match is found, so
-    /// this still degrades gracefully for a build whose exe name doesn't
-    /// match ProductName exactly.</summary>
-    private static string? FindExeIn(string dir, string productName)
-    {
-        try
-        {
-            if (!Directory.Exists(dir)) return null;
-
-            var candidates = Directory.EnumerateFiles(dir, "*.exe", SearchOption.TopDirectoryOnly)
-                .Where(p => !Path.GetFileName(p).Contains("uninst", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            return candidates.FirstOrDefault(p =>
-                string.Equals(Path.GetFileNameWithoutExtension(p), productName, StringComparison.OrdinalIgnoreCase))
-                ?? candidates.FirstOrDefault();
-        }
-        catch (Exception)
-        {
-            return null;
-        }
     }
 
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("POTA Activator is not installed on this PC - skipping.");
-            ctx.Log.Line("POTA Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx, closingName: "POTA");
 
         var config = PotaUpdaterConfig.Load();
 
@@ -203,24 +175,7 @@ public sealed class PotaUpdater : UpdaterBase
         }
     }
 
-    private static bool IsRunning(string exePath)
-    {
-        var processName = Path.GetFileNameWithoutExtension(exePath);
-        // An empty/whitespace name means detection couldn't resolve a real
-        // path - GetProcessesByName("") is not a reliable "nothing" query
-        // (observed matching something unrelated on .NET 8/Windows), so
-        // treat "we don't know" as "not running" rather than guessing.
-        if (string.IsNullOrWhiteSpace(processName)) return false;
-
-        try
-        {
-            return Process.GetProcessesByName(processName).Length > 0;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    private static bool IsRunning(string exePath) => ProcessFinder.FindByExePath(exePath).Length > 0;
 
     private static async Task<GitHubRelease?> FetchLatestReleaseAsync(
         HttpClient http, PotaUpdaterConfig config, CancellationToken ct)
@@ -263,7 +218,7 @@ public sealed class PotaUpdater : UpdaterBase
             ZipFile.ExtractToDirectory(zipPath, stagingDir, overwriteFiles: true);
 
             if (Directory.Exists(backupDir)) Directory.Delete(backupDir, recursive: true);
-            if (Directory.Exists(installDir)) CopyDirectory(installDir, backupDir);
+            if (Directory.Exists(installDir)) DirectoryCopy.CopyAll(installDir, backupDir);
 
             try
             {
@@ -272,7 +227,7 @@ public sealed class PotaUpdater : UpdaterBase
             catch (Exception)
             {
                 if (Directory.Exists(installDir)) Directory.Delete(installDir, recursive: true);
-                if (Directory.Exists(backupDir)) CopyDirectory(backupDir, installDir);
+                if (Directory.Exists(backupDir)) DirectoryCopy.CopyAll(backupDir, installDir);
                 throw;
             }
         }
@@ -281,15 +236,6 @@ public sealed class PotaUpdater : UpdaterBase
             try { Directory.Delete(stagingDir, recursive: true); } catch (Exception) { }
             try { if (Directory.Exists(backupDir)) Directory.Delete(backupDir, recursive: true); } catch (Exception) { }
         }
-    }
-
-    private static void CopyDirectory(string source, string dest)
-    {
-        Directory.CreateDirectory(dest);
-        foreach (var dir in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(dest, Path.GetRelativePath(source, dir)));
-        foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
-            File.Copy(file, Path.Combine(dest, Path.GetRelativePath(source, file)), overwrite: true);
     }
 
     private static void CopyDirectoryPreserving(string source, string dest, string[] preserveGlobs)
@@ -313,11 +259,31 @@ public sealed class PotaUpdater : UpdaterBase
     private static bool MatchesAnyGlob(string relativePath, string[] globs)
     {
         var name = Path.GetFileName(relativePath);
+        var segments = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         foreach (var glob in globs)
         {
             if (glob.StartsWith('*') && name.EndsWith(glob[1..], StringComparison.OrdinalIgnoreCase)) return true;
+
+            var normalizedGlob = glob.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            if (normalizedGlob.Contains(Path.DirectorySeparatorChar))
+            {
+                // A hand-edited entry containing a path separator (e.g.
+                // "data/settings.ini") names one specific relative path -
+                // match that exactly rather than as a whole-segment name,
+                // since no single segment of it is meant to stand alone.
+                if (string.Equals(relativePath, normalizedGlob, StringComparison.OrdinalIgnoreCase)) return true;
+                continue;
+            }
+
+            // A plain folder/file name like "logs" (no wildcard, no
+            // separator) means "this whole segment, anywhere in the path" -
+            // matched by exact path SEGMENT, not by substring. A substring
+            // check here previously also matched an unrelated file like
+            // "ChangeLogs.txt" or "Catalogs\reference.db", silently freezing
+            // it at whatever version was installed when that substring first
+            // collided.
             if (string.Equals(name, glob, StringComparison.OrdinalIgnoreCase)) return true;
-            if (relativePath.Contains(glob, StringComparison.OrdinalIgnoreCase)) return true;
+            if (segments.Any(s => string.Equals(s, glob, StringComparison.OrdinalIgnoreCase))) return true;
         }
         return false;
     }

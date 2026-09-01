@@ -199,6 +199,13 @@ public partial class App : Application
             return;
         }
 
+        if (TaskSchedulerService.IsRunning(task))
+        {
+            _tray?.ShowBalloonTip(3000, "Ham Program Auto Update",
+                "The update task is already running.", Forms.ToolTipIcon.Info);
+            return;
+        }
+
         var error = TaskSchedulerService.RunTask(task);
         if (error is not null)
         {

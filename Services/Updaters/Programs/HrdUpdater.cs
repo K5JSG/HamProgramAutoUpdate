@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 using AppInfo = HamProgramAutoUpdate.AppInfo;
@@ -80,12 +79,7 @@ public sealed class HrdUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("Ham Radio Deluxe is not installed on this PC - skipping.");
-            ctx.Log.Line("HRD Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx, closingName: "HRD");
 
         ctx.Log.Line($"Checking {PageUrl} for the latest version...");
         string html;
@@ -197,18 +191,11 @@ public sealed class HrdUpdater : UpdaterBase
 
     private static void CloseIfRunning(string? installPath, UpdaterContext ctx)
     {
-        if (installPath is null) return;
-        var processName = Path.GetFileNameWithoutExtension(installPath);
-        // GetProcessesByName("") is not a reliable "match nothing" query on
-        // .NET 8/Windows (observed matching something unrelated) - see
-        // PotaUpdater.IsRunning for the same guard and why it's needed.
-        if (string.IsNullOrWhiteSpace(processName)) return;
-
         try
         {
-            foreach (var proc in Process.GetProcessesByName(processName))
+            foreach (var proc in ProcessFinder.FindByExePath(installPath))
             {
-                ctx.Log.Line($"Closing running {processName} (PID {proc.Id}) before installing...");
+                ctx.Log.Line($"Closing running {proc.ProcessName} (PID {proc.Id}) before installing...");
                 try
                 {
                     proc.CloseMainWindow();

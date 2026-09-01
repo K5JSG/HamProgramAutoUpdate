@@ -105,12 +105,7 @@ public sealed class Log4omUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = Detect();
-        if (target is null)
-        {
-            ctx.Log.Line("Log4OM is not installed on this PC - skipping.");
-            ctx.Log.Line("Log4OM Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (target is null) return SkipNotInstalled(ctx);
 
         var flavorName = target.Flavor == Flavor.Portable ? "portable" : "full";
         ctx.Log.Line($"Detected the {flavorName} install at {target.InstallDir}.");
@@ -564,23 +559,7 @@ public sealed class Log4omUpdater : UpdaterBase
         }
     }
 
-    private static bool IsRunning(string exePath)
-    {
-        var processName = Path.GetFileNameWithoutExtension(exePath);
-        // An empty/whitespace name means detection couldn't resolve a real
-        // path - GetProcessesByName("") is not a reliable "nothing" query,
-        // so treat "we don't know" as "not running" rather than guessing.
-        if (string.IsNullOrWhiteSpace(processName)) return false;
-
-        try
-        {
-            return Process.GetProcessesByName(processName).Length > 0;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    private static bool IsRunning(string exePath) => ProcessFinder.FindByExePath(exePath).Length > 0;
 
     // -------------------------------------------------- portable install
 
@@ -610,7 +589,7 @@ public sealed class Log4omUpdater : UpdaterBase
                 var newConfigDir = Path.Combine(source, "config");
                 var existingConfigDir = Path.Combine(installDir, "config");
                 if (!Directory.Exists(existingConfigDir) && Directory.Exists(newConfigDir))
-                    CopyDirectory(newConfigDir, existingConfigDir);
+                    DirectoryCopy.CopyAll(newConfigDir, existingConfigDir);
             }
             catch (Exception)
             {
@@ -642,12 +621,4 @@ public sealed class Log4omUpdater : UpdaterBase
         }
     }
 
-    private static void CopyDirectory(string source, string dest)
-    {
-        Directory.CreateDirectory(dest);
-        foreach (var dir in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(dest, Path.GetRelativePath(source, dir)));
-        foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
-            File.Copy(file, Path.Combine(dest, Path.GetRelativePath(source, file)), overwrite: true);
-    }
 }

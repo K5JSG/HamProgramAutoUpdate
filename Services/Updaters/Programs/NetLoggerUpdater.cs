@@ -77,12 +77,7 @@ public sealed class NetLoggerUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("NetLogger is not installed on this PC - skipping.");
-            ctx.Log.Line("NetLogger Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx);
 
         ctx.Log.Line($"Checking {PageUrl} for the latest version...");
         string html;

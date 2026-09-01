@@ -66,19 +66,30 @@ public partial class MainWindow : Window
         if (confirm != MessageBoxResult.Yes) return;
 
         UpdateAvailableButton.IsEnabled = false;
-        var progress = new Progress<string>(text => UpdateAvailableButton.Content = text);
 
-        var error = await SelfUpdateService.DownloadAndLaunchInstallerAsync(release, progress);
-        if (error is not null)
+        try
         {
-            MessageBox.Show($"Could not download the update.\n\n{error}", "Update failed",
+            var progress = new Progress<string>(text => UpdateAvailableButton.Content = text);
+
+            var error = await SelfUpdateService.DownloadAndLaunchInstallerAsync(release, progress);
+            if (error is not null)
+            {
+                MessageBox.Show($"Could not download the update.\n\n{error}", "Update failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                UpdateAvailableButton.Content = $"Update to v{release.Version} available";
+                UpdateAvailableButton.IsEnabled = true;
+                return;
+            }
+
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not download the update.\n\n{ex.Message}", "Update failed",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             UpdateAvailableButton.Content = $"Update to v{release.Version} available";
             UpdateAvailableButton.IsEnabled = true;
-            return;
         }
-
-        Application.Current.Shutdown();
     }
 
     /// <summary>Closing the window hides it; the tray icon keeps the app alive.</summary>

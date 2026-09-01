@@ -61,9 +61,9 @@ public interface IProgramUpdater
     /// no network access.</summary>
     DetectedTarget DetectTarget();
 
-    /// <summary>Log writer for this program's log file. RT Systems overrides
-    /// this to emit the different header format LogParser.RtHeader expects;
-    /// every other program uses the default.</summary>
+    /// <summary>Log writer for this program's log file. Every program
+    /// currently uses UpdaterBase's default; overridable per-program if a
+    /// future one ever needs a different log format.</summary>
     UpdaterLog CreateLog(string logPath);
 
     Task<UpdateResult> RunAsync(UpdaterContext ctx);

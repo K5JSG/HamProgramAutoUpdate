@@ -49,12 +49,31 @@ public static class ChirpCloudflareAutomation
         ctx.Log.Line($"Using browser: {chromePath}");
 
         var profileDir = Path.Combine(workingDir, "bg_profile");
+        if (await IsProfileLockedByLiveChromeAsync(profileDir, ct))
+        {
+            // A previous run's Chrome can still be alive here well after a
+            // HardTimeout abandons the Task that started it (HardTimeout can
+            // only stop awaiting it, not force it to exit - see
+            // UpdaterRunner/HeadlessUpdateRunner). Reusing the same
+            // --user-data-dir while that instance still holds it would mean
+            // the new Chrome either fails to start or silently forwards to
+            // the orphan via Chrome's own single-instance-per-profile lock,
+            // reading its stale DevToolsActivePort file. Falling back to a
+            // fresh scratch profile only in that rare case costs one
+            // Cloudflare challenge's worth of cookie warmth, not correctness.
+            ctx.Log.Line("A previous CHIRP run's browser still appears to be active - using a fresh scratch profile for this run instead of risking a collision.");
+            profileDir = Path.Combine(workingDir, $"bg_profile_{Guid.NewGuid():N}");
+        }
         var downloadDir = Path.Combine(workingDir, "downloads");
         Directory.CreateDirectory(profileDir);
         Directory.CreateDirectory(downloadDir);
         SeedProfilePreferences(profileDir, downloadDir);
 
-        const string desktopName = "chirp_bg_desktop";
+        // Unlike the profile dir, a hidden desktop object has no state worth
+        // reusing across runs - making this unique per run costs nothing and
+        // guarantees a retried run (e.g. right after a HardTimeout) can never
+        // attach to an orphaned prior run's still-alive Chrome windows.
+        var desktopName = $"chirp_bg_desktop_{Environment.ProcessId}_{Guid.NewGuid():N}";
         var hDesktop = HiddenDesktopAutomation.CreateHiddenDesktop(desktopName);
         Process? chrome = null;
         ChromeDevToolsClient? cdp = null;
@@ -186,6 +205,32 @@ public static class ChirpCloudflareAutomation
             if (html is not null && LinkPattern.IsMatch(html)) return html;
             if (DateTime.UtcNow >= deadline) return null;
             await Task.Delay(3000, ct);
+        }
+    }
+
+    /// <summary>True if profileDir's DevToolsActivePort file names a port
+    /// something is still actively listening on - i.e. a previous run's
+    /// Chrome instance is still alive and holding this exact profile, rather
+    /// than just a stale leftover from a clean prior exit (which
+    /// deletes/rewrites this file on next launch anyway).</summary>
+    private static async Task<bool> IsProfileLockedByLiveChromeAsync(string profileDir, CancellationToken ct)
+    {
+        try
+        {
+            var portFile = Path.Combine(profileDir, "DevToolsActivePort");
+            if (!File.Exists(portFile)) return false;
+
+            var firstLine = (await File.ReadAllLinesAsync(portFile, ct)).FirstOrDefault();
+            if (!int.TryParse(firstLine, out var port)) return false;
+
+            using var client = new System.Net.Sockets.TcpClient();
+            var connectTask = client.ConnectAsync(System.Net.IPAddress.Loopback, port);
+            var winner = await Task.WhenAny(connectTask, Task.Delay(500, ct));
+            return winner == connectTask && client.Connected;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 

@@ -62,12 +62,7 @@ public sealed class WsjtxUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("WSJT-X is not installed on this PC - skipping.");
-            ctx.Log.Line("WSJT-X Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx);
 
         ctx.Log.Line($"Checking {ReleasesRssUrl} for the latest final release...");
         string rss;
@@ -134,7 +129,7 @@ public sealed class WsjtxUpdater : UpdaterBase
         }
 
         var downloadUrl = WebUtility.HtmlDecode(linkMatch.Groups["url"].Value.Trim());
-        var installDir = InstallDirFor(target.InstallPath!);
+        var installDir = InstallPathHelper.InstallDirFor(target.InstallPath!);
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"WsjtxUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -192,11 +187,4 @@ public sealed class WsjtxUpdater : UpdaterBase
         }
     }
 
-    private static string InstallDirFor(string exePath)
-    {
-        var dir = Path.GetDirectoryName(exePath)!;
-        return string.Equals(Path.GetFileName(dir), "bin", StringComparison.OrdinalIgnoreCase)
-            ? Path.GetDirectoryName(dir)!
-            : dir;
-    }
 }

@@ -49,8 +49,15 @@ public static class TaskSchedulerService
             using var proc = Process.Start(psi);
             if (proc is null) return (-1, "", "schtasks did not start");
 
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
+            // Both streams must be drained concurrently with waiting for
+            // exit, not read one after the other: schtasks can write enough
+            // to stderr to fill its OS pipe buffer while this thread is
+            // still blocked in stdout's ReadToEnd() (which only returns once
+            // the process exits) - and the process can never exit because
+            // it's blocked writing to a full stderr pipe nobody is draining
+            // yet. Classic redirected-pipe deadlock.
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+            var stderrTask = proc.StandardError.ReadToEndAsync();
 
             if (!proc.WaitForExit(30_000))
             {
@@ -58,10 +65,12 @@ public static class TaskSchedulerService
                 // means it's genuinely stuck - don't leave it running
                 // orphaned in the background.
                 try { proc.Kill(entireProcessTree: true); } catch (Exception) { }
-                return (-1, stdout, "schtasks.exe did not respond within 30 seconds and was terminated.");
+                var partialStdout = "";
+                try { partialStdout = stdoutTask.GetAwaiter().GetResult(); } catch (Exception) { }
+                return (-1, partialStdout, "schtasks.exe did not respond within 30 seconds and was terminated.");
             }
 
-            return (proc.ExitCode, stdout, stderr);
+            return (proc.ExitCode, stdoutTask.GetAwaiter().GetResult(), stderrTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {

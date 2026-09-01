@@ -25,12 +25,7 @@ public sealed class BktTimeSyncUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("BktTimeSync is not installed on this PC - skipping.");
-            ctx.Log.Line("BktTimeSync Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx);
 
         ctx.Log.Line($"Checking {PageUrl} for the latest version...");
         string html;
@@ -87,8 +82,13 @@ public sealed class BktTimeSyncUpdater : UpdaterBase
 
             ZipFile.ExtractToDirectory(zipPath, tempDir, overwriteFiles: true);
 
-            var installerExe = Directory.EnumerateFiles(tempDir, "*.exe", SearchOption.AllDirectories)
-                .FirstOrDefault(p => !Path.GetFileName(p).Contains("uninst", StringComparison.OrdinalIgnoreCase));
+            // Prefer the exe actually named "BktTimeSync" over just
+            // whichever non-uninstaller exe the zip happens to list first -
+            // the exact bug (a bundled helper exe winning by enumeration
+            // order) already caused POTA to falsely detect version 1.0.0.0
+            // forever (see PotaUpdater's FindExeIn/ExeFinder history).
+            var installerExe = ExeFinder.FindByProductName(
+                tempDir, "BktTimeSync", SearchOption.AllDirectories, onAmbiguous: ctx.Log.Line);
 
             if (installerExe is null)
             {
