@@ -48,7 +48,12 @@ public sealed class StatusService : IStatusService
             var logExists = File.Exists(logPath);
             var target = UpdaterRegistry.Find(entry.Key)?.DetectTarget() ?? DetectedTarget.NotFound;
 
-            if (!includeUnavailable && !target.IsInstalled && !logExists) continue;
+            // Hidden once not installed, regardless of whether a log (and
+            // history) exists - a program that's been uninstalled shouldn't
+            // linger on the dashboard forever just because it once ran here.
+            // The log itself is never touched: reinstalling brings the card
+            // (and its full history) right back, rather than starting blank.
+            if (!includeUnavailable && !target.IsInstalled) continue;
 
             var parsed = LogParser.ParseFile(logPath);
 
