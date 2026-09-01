@@ -129,14 +129,9 @@ public sealed class WsjtxImprovedUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("WSJT-X Improved is not installed on this PC - skipping.");
-            ctx.Log.Line("WSJT-X Improved Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx);
 
-        var installDir = InstallDirFor(target.InstallPath!);
+        var installDir = InstallPathHelper.InstallDirFor(target.InstallPath!);
 
         // A dedicated client, not ctx.Http: the shared one times out at 60s
         // (see HeadlessUpdateRunner/UpdaterRunner), which these ~71MB
@@ -315,13 +310,6 @@ public sealed class WsjtxImprovedUpdater : UpdaterBase
         }
     }
 
-    private static string InstallDirFor(string exePath)
-    {
-        var dir = Path.GetDirectoryName(exePath)!;
-        return string.Equals(Path.GetFileName(dir), "bin", StringComparison.OrdinalIgnoreCase)
-            ? Path.GetDirectoryName(dir)!
-            : dir;
-    }
 
     private static string VariantLabel(Variant v) => Variants.First(x => x.Variant == v).Label;
 
@@ -382,8 +370,24 @@ public sealed class WsjtxImprovedUpdater : UpdaterBase
         var installedHash = ComputeMd5(installedExePath);
         if (installedHash is null) return null;
 
+        // If a registry key exists for the real install, probing MUST be
+        // able to restore it afterward - a found key we failed to save
+        // (a transient registry error, not "no key exists at all") means
+        // there is no safety net for the hijack a scratch-folder install
+        // is about to cause, so don't risk it: skip probing entirely
+        // rather than leave the real entry pointing at a deleted scratch
+        // folder with nothing to restore it from.
         var regKey = FindRegistryKeyForInstallDir(realInstallDir);
-        var savedValues = regKey is { } rk ? SaveRegistryValues(rk.Hive, rk.KeyPath) : null;
+        Dictionary<string, object>? savedValues = null;
+        if (regKey is { } foundKey)
+        {
+            savedValues = SaveRegistryValues(foundKey.Hive, foundKey.KeyPath);
+            if (savedValues is null)
+            {
+                log.Line("Could not safely back up the existing registry entry before checking variants - skipping the check rather than risk leaving it broken.");
+                return null;
+            }
+        }
 
         try
         {

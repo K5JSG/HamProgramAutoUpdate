@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services;
 
@@ -178,6 +179,18 @@ public static class SelfUpdateService
                 await using var fs = new FileStream(downloadPath, FileMode.Create, FileAccess.Write);
                 await response.Content.CopyToAsync(fs, ct);
             }
+
+            // Never launch (elevated!) whatever landed on disk without at
+            // least confirming it looks like a real Windows executable -
+            // the same sanity check every other updater in this app applies
+            // to its own downloads (see HttpDownloader.LooksLikeExe). This
+            // is not a signature or checksum check (GitHub releases here
+            // aren't code-signed or checksummed today), only a guard against
+            // an outage, redirect, or truncated transfer handing an HTML
+            // error page or partial file to Process.Start under an admin
+            // token.
+            if (new FileInfo(downloadPath).Length < 100_000 || !HttpDownloader.LooksLikeExe(downloadPath))
+                return "The downloaded file does not look like a real installer.";
 
             progress?.Report("Launching installer...");
             LaunchWithRedirectedTempDir(downloadPath);

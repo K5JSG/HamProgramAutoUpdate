@@ -24,12 +24,7 @@ public sealed class TqslUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("TQSL is not installed on this PC - skipping.");
-            ctx.Log.Line("TQSL Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx);
 
         ctx.Log.Line($"Checking {PageUrl} for the latest version...");
         string html;

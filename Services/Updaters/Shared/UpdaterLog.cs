@@ -10,6 +10,15 @@ namespace HamProgramAutoUpdate.Services.Updaters.Shared;
 /// Every call site should pass the exact closing phrase LogParser looks for
 /// (see LogParser.CloserSuccess/CloserFailure/Updates) - this class only
 /// owns the envelope (header, timestamps, rotation), not the wording.
+///
+/// Every access to <see cref="Writer"/> goes through <see cref="_writerLock"/>.
+/// Needed for real: when UpdaterRunner/HeadlessUpdateRunner's HardTimeout
+/// fires on a stuck updater, the timed-out caller calls EndRun() (disposing
+/// Writer and nulling it) while the abandoned RunAsync task - the very one
+/// that got stuck - can still be mid-call into Line() on another thread,
+/// since a HardTimeout only abandons that task, it can't force it to stop.
+/// Without the lock that is a genuine dispose-while-writing race
+/// (ObjectDisposedException on whichever thread loses).
 /// </summary>
 public class UpdaterLog : IDisposable
 {
@@ -18,6 +27,7 @@ public class UpdaterLog : IDisposable
 
     protected readonly string LogPath;
     protected StreamWriter? Writer;
+    private readonly object _writerLock = new();
 
     public UpdaterLog(string logPath) => LogPath = logPath;
 
@@ -38,12 +48,15 @@ public class UpdaterLog : IDisposable
             RotateKeepingLast(maxRuns);
 
             var stream = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
-            Writer = new StreamWriter(stream) { AutoFlush = true };
-            WriteHeader(programName);
+            lock (_writerLock)
+            {
+                Writer = new StreamWriter(stream) { AutoFlush = true };
+                WriteHeader(programName);
+            }
         }
         catch (Exception ex)
         {
-            Writer = null;
+            lock (_writerLock) { Writer = null; }
             Console.WriteLine($"WARNING: could not open log file '{LogPath}' ({ex.Message}) - this run will not be recorded to it.");
         }
     }
@@ -59,13 +72,22 @@ public class UpdaterLog : IDisposable
     /// <summary>Writes one "[HH:mm:ss] message" line. Pass the exact phrase
     /// LogParser expects for anything meant to be recognized as a success/
     /// failure closer or a real update.</summary>
-    public void Line(string message) => Writer?.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
+    public void Line(string message)
+    {
+        lock (_writerLock)
+        {
+            Writer?.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
+        }
+    }
 
     public virtual void EndRun()
     {
-        Writer?.WriteLine();
-        Writer?.Dispose();
-        Writer = null;
+        lock (_writerLock)
+        {
+            Writer?.WriteLine();
+            Writer?.Dispose();
+            Writer = null;
+        }
     }
 
     public void Dispose() => EndRun();

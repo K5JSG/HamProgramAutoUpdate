@@ -59,16 +59,47 @@ public sealed class HistoryStore
         }
     }
 
+    /// <summary>Persists the in-memory entries, merged with whatever is
+    /// currently on disk (preferring, per key, whichever side has the newer
+    /// RecordedAt) rather than blindly overwriting the file - the dashboard
+    /// process and the separate headless --run-updates process each keep
+    /// their own long-lived in-memory copy, so a plain overwrite would let
+    /// whichever process calls Save() last silently discard an update the
+    /// other one recorded in between. A named Mutex serializes the merge
+    /// against a concurrent Save() from the other process; if it can't be
+    /// acquired promptly this still proceeds rather than risk hanging a
+    /// real update over it.</summary>
     public bool Save()
     {
         try
         {
             Directory.CreateDirectory(StateDir);
-            var tmp = FilePath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(_entries, JsonOpts));
 
-            if (File.Exists(FilePath)) File.Replace(tmp, FilePath, null);
-            else File.Move(tmp, FilePath);
+            using var mutex = new Mutex(false, @"Global\HamProgramAutoUpdate_HistoryStore");
+            var acquired = false;
+            try
+            {
+                try { acquired = mutex.WaitOne(TimeSpan.FromSeconds(5)); }
+                catch (AbandonedMutexException) { acquired = true; }
+
+                var onDisk = ReadFromDisk();
+                foreach (var (key, entry) in _entries)
+                {
+                    if (!onDisk.TryGetValue(key, out var existing) || IsNewerOrEqual(entry, existing))
+                        onDisk[key] = entry;
+                }
+                _entries = onDisk;
+
+                var tmp = FilePath + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(_entries, JsonOpts));
+
+                if (File.Exists(FilePath)) File.Replace(tmp, FilePath, null);
+                else File.Move(tmp, FilePath);
+            }
+            finally
+            {
+                if (acquired) mutex.ReleaseMutex();
+            }
 
             return true;
         }
@@ -78,9 +109,31 @@ public sealed class HistoryStore
         }
     }
 
+    private static Dictionary<string, HistoryEntry> ReadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) return new Dictionary<string, HistoryEntry>();
+            var json = File.ReadAllText(FilePath);
+            return JsonSerializer.Deserialize<Dictionary<string, HistoryEntry>>(json)
+                   ?? new Dictionary<string, HistoryEntry>();
+        }
+        catch (Exception)
+        {
+            return new Dictionary<string, HistoryEntry>();
+        }
+    }
+
+    private static bool IsNewerOrEqual(HistoryEntry a, HistoryEntry b)
+    {
+        var aTime = DateTime.TryParse(a?.RecordedAt, out var at) ? at : DateTime.MinValue;
+        var bTime = DateTime.TryParse(b?.RecordedAt, out var bt) ? bt : DateTime.MinValue;
+        return aTime >= bTime;
+    }
+
     public DateTime? GetLastUpdate(string key)
     {
-        if (!_entries.TryGetValue(key, out var entry) || entry.LastUpdate is null) return null;
+        if (!_entries.TryGetValue(key, out var entry) || entry?.LastUpdate is null) return null;
         return DateTime.TryParse(entry.LastUpdate, out var dt) ? dt : null;
     }
 

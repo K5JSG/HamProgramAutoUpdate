@@ -74,19 +74,27 @@ public sealed class UpdaterRunner : IUpdaterRunner
             if (_running.TryGetValue(key, out var existing) && !existing.IsCompleted)
                 return "This updater is already running.";
 
-            var logPath = UpdaterCatalog.LogPath(entry);
-            var log = updater.CreateLog(logPath);
-            var cts = new CancellationTokenSource();
-            var ctx = new UpdaterContext(_http, log, DryRun: false, Force: false, cts.Token);
-
-            _running[key] = RunAndCloseLogAsync(updater, log, ctx, cts);
+            // Task.Run here too, not just inside RunAndCloseLogAsync's own
+            // one: Task.Run always defers its delegate to the thread pool
+            // rather than starting it inline, whereas calling an async
+            // method directly runs it synchronously up to its first await -
+            // and BeginRun's log rotation (a synchronous file read/rewrite)
+            // sits before that first await. Without this, that I/O ran on
+            // the caller's thread (the UI thread, for every card's Run
+            // button) while still holding _lock, blocking IsRunning/
+            // AnyRunning/Run for its duration.
+            _running[key] = Task.Run(() => RunAndCloseLogAsync(updater, entry, _http));
             return null;
         }
     }
 
     private static async Task<UpdateResult> RunAndCloseLogAsync(
-        IProgramUpdater updater, UpdaterLog log, UpdaterContext ctx, CancellationTokenSource cts)
+        IProgramUpdater updater, UpdaterEntry entry, HttpClient http)
     {
+        var log = updater.CreateLog(UpdaterCatalog.LogPath(entry));
+        var cts = new CancellationTokenSource();
+        var ctx = new UpdaterContext(http, log, DryRun: false, Force: false, cts.Token);
+
         log.BeginRun(updater.DisplayName);
         try
         {
@@ -100,10 +108,26 @@ public sealed class UpdaterRunner : IUpdaterRunner
             {
                 cts.Cancel();
                 log.Line($"{updater.DisplayName} Updater FAILED: timed out after {HardTimeout.TotalMinutes:0} minutes with no progress");
+                // cts is deliberately NOT disposed on this path: runTask is
+                // abandoned here, not awaited, and may still read
+                // ctx.CancellationToken later (e.g. a linked
+                // CancellationTokenSource inside SilentExeInstaller.RunAsync)
+                // - disposing out from under it risks an
+                // ObjectDisposedException inside a task nobody observes,
+                // silently swallowed since nothing ever awaits runTask again.
+                // Leaking one CTS on this rare timeout path costs far less
+                // than that.
                 return UpdateResult.Failed("Timed out");
             }
 
-            return await runTask;
+            try
+            {
+                return await runTask;
+            }
+            finally
+            {
+                cts.Dispose();
+            }
         }
         catch (Exception ex)
         {
@@ -113,7 +137,6 @@ public sealed class UpdaterRunner : IUpdaterRunner
         finally
         {
             log.EndRun();
-            cts.Dispose();
         }
     }
 

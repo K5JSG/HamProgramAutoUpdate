@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text.RegularExpressions;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
@@ -60,12 +59,7 @@ public sealed class N1mmUpdater : UpdaterBase
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {
         var target = DetectTarget();
-        if (!target.IsInstalled)
-        {
-            ctx.Log.Line("N1MM Logger+ is not installed on this PC - skipping.");
-            ctx.Log.Line("N1MM Updater completed successfully");
-            return UpdateResult.Skipped("Not installed");
-        }
+        if (!target.IsInstalled) return SkipNotInstalled(ctx, closingName: "N1MM");
 
         ctx.Log.Line($"Checking {PageUrl} for the latest version...");
         string html;
@@ -151,16 +145,11 @@ public sealed class N1mmUpdater : UpdaterBase
 
     private static void KillIfRunning(string? installPath, UpdaterContext ctx)
     {
-        var processName = installPath is null
-            ? "N1MMLogger.net"
-            : Path.GetFileNameWithoutExtension(installPath);
-        // GetProcessesByName("") is not a reliable "match nothing" query on
-        // .NET 8/Windows - see PotaUpdater.IsRunning for the same guard.
-        if (string.IsNullOrWhiteSpace(processName)) return;
+        var processName = installPath is null ? "N1MMLogger.net" : Path.GetFileNameWithoutExtension(installPath);
 
         try
         {
-            foreach (var proc in Process.GetProcessesByName(processName))
+            foreach (var proc in ProcessFinder.FindByName(processName))
             {
                 ctx.Log.Line($"Closing running {processName} (PID {proc.Id}) before installing...");
                 try { proc.Kill(entireProcessTree: true); } catch (Exception) { }
