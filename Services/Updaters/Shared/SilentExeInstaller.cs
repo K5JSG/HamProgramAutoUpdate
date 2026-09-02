@@ -80,7 +80,24 @@ public static class SilentExeInstaller
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (var a in args) psi.ArgumentList.Add(a);
+
+        // NSIS's /D=<dir> switch must be the last token on the command line
+        // and completely unquoted, even when <dir> contains spaces - NSIS
+        // silently ignores a quoted /D= and falls back to its compiled-in
+        // default directory instead (confirmed live - see WsjtxUpdater's
+        // doc comment on this). ArgumentList quotes any token containing a
+        // space, which a /D= whose directory has one (e.g. the default
+        // "C:\Program Files\WSJT-X") would trip - build the command line by
+        // hand in that case so only the trailing /D= token stays raw.
+        if (args.Count > 0 && args[^1].StartsWith("/D=", StringComparison.Ordinal))
+        {
+            var quotedHead = args.Take(args.Count - 1).Select(QuoteIfNeeded);
+            psi.Arguments = string.Join(' ', quotedHead.Append(args[^1]));
+        }
+        else
+        {
+            foreach (var a in args) psi.ArgumentList.Add(a);
+        }
 
         using var proc = Process.Start(psi);
         if (proc is null) return (false, -1);
@@ -105,4 +122,12 @@ public static class SilentExeInstaller
         var ok = proc.ExitCode is 0 or 1223;
         return (ok, proc.ExitCode);
     }
+
+    /// <summary>Wraps <paramref name="arg"/> in quotes if it contains
+    /// whitespace. Not a general command-line quoting implementation (it
+    /// doesn't escape embedded quote characters) - every non-/D= argument
+    /// passed through here is a hardcoded literal flag, never one that
+    /// could contain a `"`.</summary>
+    private static string QuoteIfNeeded(string arg) =>
+        arg.IndexOfAny(new[] { ' ', '\t' }) >= 0 ? $"\"{arg}\"" : arg;
 }

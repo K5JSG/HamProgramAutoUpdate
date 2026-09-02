@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
@@ -14,6 +15,15 @@ public sealed class ReleaseInfo
     public required string TagName { get; init; }
     public required string DownloadUrl { get; init; }
     public required string AssetName { get; init; }
+
+    /// <summary>
+    /// Download URL of the "&lt;AssetName&gt;.sha256" asset published
+    /// alongside the setup exe by .github/workflows/release.yml, or null if
+    /// this release predates that checksum being published.
+    /// DownloadAndLaunchInstallerAsync refuses to launch a downloaded
+    /// installer elevated without one - see it for why.
+    /// </summary>
+    public string? ChecksumUrl { get; init; }
 }
 
 /// <summary>
@@ -140,12 +150,16 @@ public static class SelfUpdateService
                 a.Name.EndsWith("-setup.exe", StringComparison.OrdinalIgnoreCase));
             if (asset is null) return null;
 
+            var checksumAsset = release.Assets.FirstOrDefault(a =>
+                a.Name.Equals(asset.Name + ".sha256", StringComparison.OrdinalIgnoreCase));
+
             return new ReleaseInfo
             {
                 Version = latest,
                 TagName = release.TagName,
                 DownloadUrl = asset.BrowserDownloadUrl,
                 AssetName = asset.Name,
+                ChecksumUrl = checksumAsset?.BrowserDownloadUrl,
             };
         }
         catch (Exception)
@@ -180,20 +194,37 @@ public static class SelfUpdateService
                 await response.Content.CopyToAsync(fs, ct);
             }
 
-            // Never launch (elevated!) whatever landed on disk without at
-            // least confirming it looks like a real Windows executable -
-            // the same sanity check every other updater in this app applies
-            // to its own downloads (see HttpDownloader.LooksLikeExe). This
-            // is not a signature or checksum check (GitHub releases here
-            // aren't code-signed or checksummed today), only a guard against
-            // an outage, redirect, or truncated transfer handing an HTML
-            // error page or partial file to Process.Start under an admin
-            // token.
+            // Confirm it at least looks like a real Windows executable - the
+            // same sanity check every other updater in this app applies to
+            // its own downloads (see HttpDownloader.LooksLikeExe). This alone
+            // only catches an outage, redirect, or truncated transfer handing
+            // an HTML error page or partial file to Process.Start under an
+            // admin token - it says nothing about a genuinely swapped or
+            // tampered file, which is what the checksum check below is for.
             if (new FileInfo(downloadPath).Length < 100_000 || !HttpDownloader.LooksLikeExe(downloadPath))
+            {
+                TryDelete(downloadPath);
                 return "The downloaded file does not look like a real installer.";
+            }
+
+            // Never launch (elevated!) a file whose integrity wasn't
+            // verified against the checksum release.yml publishes alongside
+            // every -setup.exe asset. Fails closed: a release with no
+            // checksum asset (e.g. one published before this check existed)
+            // or a mismatched hash both refuse the update rather than
+            // silently trusting the raw HTTPS download.
+            progress?.Report("Verifying update...");
+            var checksumError = await VerifyChecksumAsync(release, downloadPath, ct);
+            if (checksumError is not null)
+            {
+                TryDelete(downloadPath);
+                return checksumError;
+            }
 
             progress?.Report("Launching installer...");
-            LaunchWithRedirectedTempDir(downloadPath);
+            if (App.Runner.AnyRunning())
+                progress?.Report("Waiting for a running updater to finish...");
+            await LaunchWithRedirectedTempDirAsync(downloadPath);
 
             return null;
         }
@@ -201,6 +232,54 @@ public static class SelfUpdateService
         {
             return ex.Message;
         }
+    }
+
+    /// <summary>
+    /// Downloads the "&lt;asset&gt;.sha256" file published alongside the
+    /// installer and compares it against the actual SHA256 of the
+    /// downloaded file. Returns null if they match, or an error message
+    /// otherwise (including when no checksum was published for this
+    /// release - see the ChecksumUrl doc comment on ReleaseInfo).
+    /// </summary>
+    private static async Task<string?> VerifyChecksumAsync(ReleaseInfo release, string downloadPath, CancellationToken ct)
+    {
+        if (release.ChecksumUrl is null)
+            return "This release did not publish a checksum, so the download cannot be verified.";
+
+        string expectedText;
+        try
+        {
+            using var http = NewHttpClient(TimeSpan.FromSeconds(30));
+            expectedText = await http.GetStringAsync(release.ChecksumUrl, ct);
+        }
+        catch (Exception ex)
+        {
+            return $"Could not download the update's checksum: {ex.Message}";
+        }
+
+        // Get-FileHash's default text output is just the hex hash with
+        // trailing whitespace/newline; tolerate a leading "<hash> *<file>"
+        // sha256sum-style line too in case the asset is ever regenerated
+        // with a different tool.
+        var expectedHash = expectedText.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrEmpty(expectedHash))
+            return "The update's checksum file was empty or malformed.";
+
+        byte[] actualHashBytes;
+        await using (var fs = new FileStream(downloadPath, FileMode.Open, FileAccess.Read))
+        {
+            actualHashBytes = await SHA256.HashDataAsync(fs, ct);
+        }
+        var actualHash = Convert.ToHexString(actualHashBytes);
+
+        return string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : "The downloaded update's checksum did not match - it may be corrupted or tampered with.";
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch (Exception) { }
     }
 
     /// <summary>
@@ -215,10 +294,20 @@ public static class SelfUpdateService
     /// the child a different default environment) is involved. Restored
     /// immediately after starting the process so nothing else in this
     /// process is affected by the redirected TMP/TEMP once launched.
+    ///
+    /// TMP/TEMP are process-wide, not per-thread, so without
+    /// PauseForInstallAsync below, an in-process updater run (App.Runner,
+    /// started from a dashboard card's own Run button on a background task)
+    /// could have Path.GetTempPath() resolve to InstallTempDir for the width
+    /// of this call - confirmed reachable live, since the dashboard and the
+    /// self-update prompt run in the same process and nothing previously
+    /// stopped both happening at once.
     /// </summary>
-    private static void LaunchWithRedirectedTempDir(string exePath)
+    private static async Task LaunchWithRedirectedTempDirAsync(string exePath)
     {
         Directory.CreateDirectory(InstallTempDir);
+
+        using var pause = await App.Runner.PauseForInstallAsync();
 
         var (prevTmp, prevTemp) = (Environment.GetEnvironmentVariable("TMP"), Environment.GetEnvironmentVariable("TEMP"));
         try

@@ -16,6 +16,9 @@ public sealed class N1mmUpdater : UpdaterBase
 {
     private const string PageUrl = "https://n1mmwp.hamdocs.com/mmfiles/categories/programlatestupdate/";
 
+    // Assumes N1MM's version always starts "1.0." (true for a long time in
+    // practice) - if that ever changes (1.1.x, 2.0.x), this stops matching
+    // anything and version detection silently fails with no clue why.
     private static readonly Regex VersionRegex = new(@"1\.0\.\d{5}", RegexOptions.Compiled);
 
     private static readonly Regex DownloadPageHrefRegex = new(
@@ -106,7 +109,7 @@ public sealed class N1mmUpdater : UpdaterBase
 
         var downloadPageUrl = ToAbsolute(pageHref.Groups["url"].Value, PageUrl);
 
-        KillIfRunning(target.InstallPath, ctx);
+        CloseIfRunning(target.InstallPath, ctx);
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"N1mmUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -143,7 +146,11 @@ public sealed class N1mmUpdater : UpdaterBase
         }
     }
 
-    private static void KillIfRunning(string? installPath, UpdaterContext ctx)
+    /// <summary>Closes gracefully first, only force-killing if it doesn't
+    /// exit on its own - N1MM is a contest logging program, and force-
+    /// killing it immediately risks losing in-progress logged QSO data.
+    /// Same pattern as HrdUpdater.CloseIfRunning.</summary>
+    private static void CloseIfRunning(string? installPath, UpdaterContext ctx)
     {
         var processName = installPath is null ? "N1MMLogger.net" : Path.GetFileNameWithoutExtension(installPath);
 
@@ -152,7 +159,12 @@ public sealed class N1mmUpdater : UpdaterBase
             foreach (var proc in ProcessFinder.FindByName(processName))
             {
                 ctx.Log.Line($"Closing running {processName} (PID {proc.Id}) before installing...");
-                try { proc.Kill(entireProcessTree: true); } catch (Exception) { }
+                try
+                {
+                    proc.CloseMainWindow();
+                    if (!proc.WaitForExit(10_000)) proc.Kill(entireProcessTree: true);
+                }
+                catch (Exception) { }
                 finally { proc.Dispose(); }
             }
         }

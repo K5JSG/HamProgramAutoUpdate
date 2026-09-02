@@ -60,21 +60,19 @@ public sealed class HrdUpdater : UpdaterBase
         return DetectedTarget.NotFound;
     }
 
-    private static string? FindHrdExeIn(string dir)
-    {
-        try
-        {
-            if (!Directory.Exists(dir)) return null;
-            return Directory.EnumerateFiles(dir, "*.exe", SearchOption.AllDirectories)
-                .FirstOrDefault(p =>
-                    Path.GetFileName(p).Contains("HRD", StringComparison.OrdinalIgnoreCase) ||
-                    Path.GetFileName(p).Contains("Ham Radio Deluxe", StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-    }
+    /// <summary>Routed through the shared ExeFinder rather than a plain
+    /// "first exe whose name contains HRD" scan - a real HRD install
+    /// directory holds many same-prefixed tool exes (HRDLogBook.exe,
+    /// HRDRigControl.exe, HRDDDEServer.exe, HRDVSP.exe, ...), the same class
+    /// of "whichever exe happens to be in the folder" bug ExeFinder's own
+    /// doc comment says already caused a confirmed POTA bug. "HRDLogbook" is
+    /// tried as the product name since that's the main Logbook program's
+    /// usual exe name (see the App Paths tier above for the same name); if
+    /// an install ever has multiple candidates that don't match it,
+    /// ExeFinder now warns instead of silently guessing.</summary>
+    private static string? FindHrdExeIn(string dir) =>
+        ExeFinder.FindByProductName(dir, "HRDLogbook", SearchOption.AllDirectories,
+            onAmbiguous: msg => Console.WriteLine($"HRD detection: {msg}"));
 
     public override async Task<UpdateResult> RunAsync(UpdaterContext ctx)
     {

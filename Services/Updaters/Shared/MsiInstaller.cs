@@ -19,7 +19,8 @@ public static class MsiExitCodes
         [1641] = "Installation succeeded and a restart has been initiated.",
     };
 
-    /// <summary>0 and 3010 both mean success (3010 = reboot required).</summary>
+    /// <summary>0, 3010, and 1641 all mean success (3010 = reboot required,
+    /// 1641 = reboot already initiated).</summary>
     public static bool IsSuccess(int exitCode) => exitCode is 0 or 3010 or 1641;
 
     public static string Describe(int exitCode) =>
@@ -51,7 +52,20 @@ public static class MsiInstaller
         using var proc = Process.Start(psi);
         if (proc is null) return (false, -1, "msiexec did not start.");
 
-        await proc.WaitForExitAsync(ct);
+        try
+        {
+            await proc.WaitForExitAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Without this, a cancelled wait (e.g. the outer HardTimeout)
+            // leaves msiexec running orphaned - and since Windows Installer
+            // serializes ALL msi operations system-wide, an orphan here can
+            // make the next scheduled run of any MSI-based updater fail with
+            // 1618 ("another installation is already in progress").
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch (Exception) { }
+            throw;
+        }
 
         var ok = MsiExitCodes.IsSuccess(proc.ExitCode);
         return (ok, proc.ExitCode, MsiExitCodes.Describe(proc.ExitCode));

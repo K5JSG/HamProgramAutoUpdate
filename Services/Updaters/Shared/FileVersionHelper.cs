@@ -52,8 +52,8 @@ public static class FileVersionHelper
         foreach (var part in parts)
         {
             var digits = new string(part.TakeWhile(char.IsDigit).ToArray());
-            if (digits.Length == 0) break;
-            result.Add(int.Parse(digits));
+            if (digits.Length == 0 || !int.TryParse(digits, out var value)) break;
+            result.Add(value);
         }
         return result.Count > 0 ? result.ToArray() : null;
     }

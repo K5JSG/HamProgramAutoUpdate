@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _updateCheckTimer;
     private bool _pollingFast;
+    private int _notRunningTicksInARow;
     private ReleaseInfo? _pendingUpdate;
 
     public MainWindow()
@@ -141,21 +142,44 @@ public partial class MainWindow : Window
     /// <summary>
     /// Poll every 3 seconds while something is running so cards update live,
     /// then drop back to the idle 30 second refresh.
+    ///
+    /// AnyRunning()/per-card IsRunning only ever reflect IN-PROCESS runs
+    /// started via a card's own Run button (App.Runner) - neither can see the
+    /// "Program Update Scripts" scheduled task, which runs as a completely
+    /// separate process. Without also checking TaskSchedulerService.IsRunning,
+    /// fast polling triggered by "Run All Updates" reverted to the slow
+    /// interval on the very next tick even while that task was still
+    /// actively running.
     /// </summary>
     private void UpdatePollingRate(List<CardViewModel> items)
     {
-        var shouldPollFast = items.Any(i => i.Model.IsRunning) || App.Runner.AnyRunning();
+        var stillRunning = items.Any(i => i.Model.IsRunning) || App.Runner.AnyRunning()
+            || TaskSchedulerService.IsRunning(TaskSchedulerService.UpdaterTaskPath);
 
-        if (shouldPollFast && !_pollingFast)
+        if (stillRunning)
         {
-            _timer.Interval = TimeSpan.FromSeconds(3);
-            _pollingFast = true;
+            _notRunningTicksInARow = 0;
+            if (!_pollingFast)
+            {
+                _timer.Interval = TimeSpan.FromSeconds(3);
+                _pollingFast = true;
+            }
+            return;
         }
-        else if (!shouldPollFast && _pollingFast)
-        {
-            _timer.Interval = TimeSpan.FromSeconds(30);
-            _pollingFast = false;
-        }
+
+        if (!_pollingFast) return;
+
+        // schtasks /Query can briefly still report "Ready" for a moment
+        // right after /Run fires it off - require two consecutive "nothing
+        // running" ticks (a 3-6s grace window at the fast interval) before
+        // actually dropping back to slow polling, so "Run All Updates"
+        // starting the task doesn't get immediately undone by this same
+        // check on the very next tick before Task Scheduler has caught up.
+        if (++_notRunningTicksInARow < 2) return;
+
+        _timer.Interval = TimeSpan.FromSeconds(30);
+        _pollingFast = false;
+        _notRunningTicksInARow = 0;
     }
 
     // ------------------------------------------------------------- header
@@ -171,6 +195,13 @@ public partial class MainWindow : Window
             "Run updates", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (confirm != MessageBoxResult.Yes) return;
+
+        // Also check whether the dashboard app itself has an update, same as
+        // the 6-hour _updateCheckTimer - fire-and-forget, and it only ever
+        // shows UpdateAvailableButton (never downloads/installs on its own),
+        // so it's safe to kick off regardless of whether the scheduled task
+        // below is found/started successfully.
+        _ = CheckForUpdateAsync();
 
         var task = TaskSchedulerService.ResolveUpdaterTask();
         if (task is null)

@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
+﻿using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -124,17 +122,25 @@ public sealed class HistoryStore
         }
     }
 
+    /// <summary>Parses a timestamp written by <see cref="RecordIfNewer"/> or
+    /// <see cref="SetLastUpdate"/> ("o"/"s" format, both culture-invariant).
+    /// Must parse with InvariantCulture to match - a plain culture-sensitive
+    /// DateTime.TryParse would misread the stored ISO-shaped digits under a
+    /// non-Gregorian default calendar (e.g. th-TH).</summary>
+    private static bool TryParseStoredTimestamp(string? s, out DateTime result) =>
+        DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out result);
+
     private static bool IsNewerOrEqual(HistoryEntry a, HistoryEntry b)
     {
-        var aTime = DateTime.TryParse(a?.RecordedAt, out var at) ? at : DateTime.MinValue;
-        var bTime = DateTime.TryParse(b?.RecordedAt, out var bt) ? bt : DateTime.MinValue;
+        var aTime = TryParseStoredTimestamp(a?.RecordedAt, out var at) ? at : DateTime.MinValue;
+        var bTime = TryParseStoredTimestamp(b?.RecordedAt, out var bt) ? bt : DateTime.MinValue;
         return aTime >= bTime;
     }
 
     public DateTime? GetLastUpdate(string key)
     {
         if (!_entries.TryGetValue(key, out var entry) || entry?.LastUpdate is null) return null;
-        return DateTime.TryParse(entry.LastUpdate, out var dt) ? dt : null;
+        return TryParseStoredTimestamp(entry.LastUpdate, out var dt) ? dt : null;
     }
 
     public bool RecordIfNewer(string key, DateTime candidate)

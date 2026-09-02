@@ -27,6 +27,19 @@ public sealed class RtSystemsUpdater : UpdaterBase
     {
     }
 
+    /// <summary>
+    /// Deliberately deviates from IProgramUpdater.DetectTarget's documented
+    /// "cheap enough for every dashboard refresh - registry reads and
+    /// File.Exists checks only" contract: RT Systems has no registry
+    /// uninstall entries at all (see the class doc comment), so a real
+    /// filesystem walk is the only way to detect it. Also re-walked
+    /// independently by RunAsync below rather than reused, since DetectTarget
+    /// and RunAsync are called at genuinely different times (this is a
+    /// stateless static detector, not an instance with something to cache
+    /// between them). Accepted as-is: RT Systems module folders are
+    /// typically few and shallow in practice, so the real-world cost of the
+    /// extra walk(s) is low.
+    /// </summary>
     private static DetectedTarget DetectRtSystems() =>
         Directory.Exists(BaseDir) && FindUpdaters().Any()
             ? DetectedTarget.Found(BaseDir)

@@ -45,8 +45,20 @@ public sealed class InstallerWindowSuppressor : IDisposable
 
     public void Stop()
     {
-        _cts?.Cancel();
+        // Guards against the double-call every caller's using-block makes
+        // (an explicit Stop() in a finally, then Dispose()'s own Stop()) -
+        // without this early-return, the second call's Cancel() would throw
+        // ObjectDisposedException on an already-disposed _cts.
+        if (_cts is null) return;
+
+        _cts.Cancel();
         try { _loop?.Wait(TimeSpan.FromSeconds(2)); } catch (Exception) { }
+        // Safe even if Wait() above timed out: PollOnce's loop only reads
+        // IsCancellationRequested on its own locally-captured token, never
+        // _cts itself, so disposing here can't throw into a still-running
+        // loop iteration.
+        _cts.Dispose();
+        _cts = null;
     }
 
     public void Dispose() => Stop();

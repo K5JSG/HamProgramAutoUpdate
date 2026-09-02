@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using HamProgramAutoUpdate.Models;
+﻿using HamProgramAutoUpdate.Models;
 using HamProgramAutoUpdate.Services.Updaters;
 
 namespace HamProgramAutoUpdate.Services;
@@ -45,7 +41,6 @@ public sealed class StatusService : IStatusService
         foreach (var entry in UpdaterCatalog.Entries)
         {
             var logPath = UpdaterCatalog.LogPath(entry);
-            var logExists = File.Exists(logPath);
             var target = UpdaterRegistry.Find(entry.Key)?.DetectTarget() ?? DetectedTarget.NotFound;
 
             // Hidden once not installed, regardless of whether a log (and
@@ -70,13 +65,10 @@ public sealed class StatusService : IStatusService
                 LogPath = logPath,
                 TargetInstallPath = target.InstallPath,
                 TargetInstalled = target.IsInstalled,
-                TargetVersion = target.Version,
-                LogExists = logExists,
                 Runs = parsed.Runs,
                 LatestStatus = parsed.LatestStatus,
                 LatestRunTime = parsed.LatestRunTime,
                 LastUpdate = remembered,
-                LastUpdateInLog = parsed.LastUpdate,
                 LastUpdateRemembered = remembered is not null && parsed.LastUpdate is null,
                 ErrorMessage = parsed.ErrorMessage,
                 IsRunning = _runner.IsRunning(entry.Key),
@@ -95,6 +87,11 @@ public sealed class StatusService : IStatusService
     /// </summary>
     public (bool ok, string? error) ClearLog(string key)
     {
+        // Not a no-op: GetAll's side effects (parse every log, RecordIfNewer,
+        // Save if changed) capture this program's last update into persisted
+        // history BEFORE its log is truncated below, so LastUpdateRemembered
+        // correctly kicks in afterward instead of showing "None recorded".
+        // Do not remove this call just because its return value is unused.
         GetAll(includeUnavailable: true);
 
         var entry = UpdaterCatalog.Find(key);

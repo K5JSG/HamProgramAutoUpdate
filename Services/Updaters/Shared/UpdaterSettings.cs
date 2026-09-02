@@ -25,9 +25,7 @@ public sealed class UpdaterSettings
     /// registry either way).</summary>
     public string Log4omPortablePath { get; set; } = "";
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "HamProgramAutoUpdate", "updater_settings.json");
+    private static string FilePath => Path.Combine(HistoryStore.StateDir, "updater_settings.json");
 
     public static UpdaterSettings Load()
     {
