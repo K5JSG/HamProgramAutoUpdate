@@ -155,8 +155,10 @@ public sealed class WsjtxUpdater : UpdaterBase
             try
             {
                 // NSIS's /D= must be the last argument and must not be
-                // quoted - ArgumentList won't quote it since it has no
-                // spaces, but do not reorder these.
+                // quoted, which matters here since installDir can be
+                // "C:\Program Files\WSJT-X" - SilentExeInstaller.RunAsync
+                // special-cases a trailing /D= to keep it unquoted; do not
+                // reorder these.
                 result = await SilentExeInstaller.RunAsync(
                     installerPath,
                     new[] { "/S", $"/D={installDir}" },

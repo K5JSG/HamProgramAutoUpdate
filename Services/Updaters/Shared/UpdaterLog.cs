@@ -96,7 +96,11 @@ public class UpdaterLog : IDisposable
     {
         try
         {
-            if (!File.Exists(LogPath) || maxRuns < 1) return;
+            // maxRuns < 2 is excluded here too: keepFromIndex below would
+            // read one past the end of matches (matches[matches.Count]) for
+            // maxRuns == 1, since keeping "maxRuns - 1" recent runs means
+            // keeping zero when maxRuns is 1.
+            if (!File.Exists(LogPath) || maxRuns < 2) return;
 
             var content = File.ReadAllText(LogPath);
             var matches = RunHeaderStart.Matches(content);

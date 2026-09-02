@@ -41,6 +41,10 @@ public sealed class CardViewModel
     public CardViewModel(ProgramStatus status)
     {
         _s = status;
+    }
+
+    static CardViewModel()
+    {
         AllBrushesFrozen();
     }
 
@@ -144,9 +148,11 @@ public sealed class CardViewModel
 
     public string RunButtonText => _s.IsRunning ? "Running..." : "Run";
 
-    public string RunTooltip => _s.TargetInstalled
-        ? "Run this program's updater now"
-        : $"{_s.Name} was not detected on this PC - nothing to update.";
+    public string RunTooltip => !_s.TargetInstalled
+        ? $"{_s.Name} was not detected on this PC - nothing to update."
+        : _s.IsRunning
+            ? "Already running"
+            : "Run this program's updater now";
 
     // ------------------------------------------------------------- errors
 

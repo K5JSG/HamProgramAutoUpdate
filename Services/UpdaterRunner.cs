@@ -12,6 +12,17 @@ public interface IUpdaterRunner : IDisposable
     bool IsRunning(string key);
     bool AnyRunning();
     string? Run(string key);
+
+    /// <summary>
+    /// Blocks new Run() calls and waits for every currently-running updater
+    /// to finish, so the caller can rely on no updater running - and
+    /// therefore none calling Path.GetTempPath() - until the returned
+    /// IDisposable is disposed. Used by SelfUpdateService to close a race
+    /// where a running updater's temp-path lookup could observe the
+    /// installer's briefly-redirected TMP/TEMP - see
+    /// SelfUpdateService.LaunchWithRedirectedTempDirAsync.
+    /// </summary>
+    Task<IDisposable> PauseForInstallAsync();
 }
 
 /// <summary>
@@ -35,6 +46,7 @@ public sealed class UpdaterRunner : IUpdaterRunner
 
     private readonly Dictionary<string, Task<UpdateResult>> _running = new();
     private readonly object _lock = new();
+    private bool _installPending;
 
     // UseProxy = false skips Windows' WPAD/proxy auto-detection, a
     // synchronous native call that can hang for a long time on some
@@ -71,6 +83,9 @@ public sealed class UpdaterRunner : IUpdaterRunner
 
         lock (_lock)
         {
+            if (_installPending)
+                return "An app update is installing right now - try again in a moment.";
+
             if (_running.TryGetValue(key, out var existing) && !existing.IsCompleted)
                 return "This updater is already running.";
 
@@ -92,6 +107,22 @@ public sealed class UpdaterRunner : IUpdaterRunner
         IProgramUpdater updater, UpdaterEntry entry, HttpClient http)
     {
         var log = updater.CreateLog(UpdaterCatalog.LogPath(entry));
+
+        // Closes a real cross-process race: the headless --run-updates
+        // scheduled task (a separate process) can run the same program's
+        // updater at the same time as this one - see
+        // CrossProcessUpdaterLock's own doc comment for why this is
+        // confirmed reachable, not just theoretical.
+        var crossProcessLock = CrossProcessUpdaterLock.TryAcquire(entry.Key);
+        if (crossProcessLock is null)
+        {
+            log.BeginRun(updater.DisplayName);
+            log.Line($"{updater.DisplayName} Updater: already running via the scheduled task or another instance - skipping.");
+            log.Line($"{updater.DisplayName} Updater completed successfully");
+            log.EndRun();
+            return UpdateResult.Skipped("Already running via the scheduled task or another instance");
+        }
+
         var cts = new CancellationTokenSource();
         var ctx = new UpdaterContext(http, log, DryRun: false, Force: false, cts.Token);
 
@@ -108,15 +139,17 @@ public sealed class UpdaterRunner : IUpdaterRunner
             {
                 cts.Cancel();
                 log.Line($"{updater.DisplayName} Updater FAILED: timed out after {HardTimeout.TotalMinutes:0} minutes with no progress");
-                // cts is deliberately NOT disposed on this path: runTask is
-                // abandoned here, not awaited, and may still read
-                // ctx.CancellationToken later (e.g. a linked
-                // CancellationTokenSource inside SilentExeInstaller.RunAsync)
-                // - disposing out from under it risks an
-                // ObjectDisposedException inside a task nobody observes,
-                // silently swallowed since nothing ever awaits runTask again.
-                // Leaking one CTS on this rare timeout path costs far less
-                // than that.
+                // Neither cts nor crossProcessLock is released on this path:
+                // runTask is abandoned here, not awaited, and may still be
+                // doing real work (e.g. still running an installer, still
+                // reading ctx.CancellationToken) well after this method
+                // returns. Releasing the cross-process lock here would let
+                // another process start a genuinely concurrent run against
+                // that still-active work - exactly the race the lock exists
+                // to prevent. Same tradeoff already accepted for cts:
+                // leaking one CTS and one Mutex handle on this rare timeout
+                // path costs far less than either an ObjectDisposedException
+                // in an unobserved task, or a real double-install race.
                 return UpdateResult.Failed("Timed out");
             }
 
@@ -127,10 +160,12 @@ public sealed class UpdaterRunner : IUpdaterRunner
             finally
             {
                 cts.Dispose();
+                crossProcessLock.Dispose();
             }
         }
         catch (Exception ex)
         {
+            crossProcessLock.Dispose();
             log.Line($"{updater.DisplayName} Updater FAILED: {ex.Message}");
             return UpdateResult.Failed(ex.Message);
         }
@@ -138,6 +173,41 @@ public sealed class UpdaterRunner : IUpdaterRunner
         {
             log.EndRun();
         }
+    }
+
+    public async Task<IDisposable> PauseForInstallAsync()
+    {
+        List<Task<UpdateResult>> running;
+        lock (_lock)
+        {
+            _installPending = true;
+            running = _running.Values.Where(t => !t.IsCompleted).ToList();
+        }
+
+        // Best-effort drain: this only waits for RunAndCloseLogAsync's own
+        // outer task, which completes at the latest by HardTimeout. A run
+        // that hit HardTimeout has its own inner task abandoned rather than
+        // awaited (see the CTS-leak comment above) and could in theory still
+        // be mid-flight past this point - too rare an edge case (timeout AND
+        // a same-instant install) to justify tracking abandoned tasks too.
+        foreach (var task in running)
+        {
+            try { await task; } catch { }
+        }
+
+        return new InstallPause(this);
+    }
+
+    private void EndInstallPause()
+    {
+        lock (_lock) { _installPending = false; }
+    }
+
+    private sealed class InstallPause : IDisposable
+    {
+        private readonly UpdaterRunner _owner;
+        public InstallPause(UpdaterRunner owner) => _owner = owner;
+        public void Dispose() => _owner.EndInstallPause();
     }
 
     public void Dispose() => _http.Dispose();

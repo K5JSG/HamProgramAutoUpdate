@@ -1,8 +1,4 @@
-﻿using System;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Threading;
+﻿using System.Diagnostics;
 using System.Windows;
 using HamProgramAutoUpdate.Services;
 using Forms = System.Windows.Forms;
@@ -241,8 +237,20 @@ public partial class App : Application
 
 public static class AppInfo
 {
-    public static string Version =>
-        FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? "").FileVersion ?? "1.0.0.0";
+    public static string Version
+    {
+        get
+        {
+            try
+            {
+                return FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? "").FileVersion ?? "1.0.0.0";
+            }
+            catch (Exception)
+            {
+                return "1.0.0.0";
+            }
+        }
+    }
 
     /// <summary>Parsed form of <see cref="Version"/>, for comparing against a
     /// GitHub release tag in SelfUpdateService.</summary>

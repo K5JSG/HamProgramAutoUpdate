@@ -1,5 +1,6 @@
 ﻿using System.Net.Http;
 using HamProgramAutoUpdate.Services;
+using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services.Updaters;
 
@@ -158,7 +159,25 @@ public static class HeadlessUpdateRunner
         HttpClient http, UpdaterEntry entry, IProgramUpdater updater, bool dryRun, bool force)
     {
         var log = updater.CreateLog(UpdaterCatalog.LogPath(entry));
-        using var cts = new CancellationTokenSource();
+
+        // Closes a real cross-process race: the interactive dashboard
+        // (UpdaterRunner, a separate process from this headless one) can run
+        // the same program's updater from a card's own Run button at the
+        // same time as this scheduled run - see CrossProcessUpdaterLock's
+        // own doc comment for why this is confirmed reachable, not just
+        // theoretical.
+        var crossProcessLock = CrossProcessUpdaterLock.TryAcquire(entry.Key);
+        if (crossProcessLock is null)
+        {
+            log.BeginRun(updater.DisplayName);
+            log.Line($"{updater.DisplayName} Updater: already running via the dashboard or another instance - skipping.");
+            log.Line($"{updater.DisplayName} Updater completed successfully");
+            log.EndRun();
+            Console.WriteLine($"{entry.DisplayName}: SKIPPED (already running elsewhere)");
+            return UpdateOutcome.Skipped;
+        }
+
+        var cts = new CancellationTokenSource();
         var ctx = new UpdaterContext(http, log, DryRun: dryRun, Force: force, cts.Token);
 
         log.BeginRun(updater.DisplayName);
@@ -176,15 +195,36 @@ public static class HeadlessUpdateRunner
                 cts.Cancel();
                 log.Line($"{updater.DisplayName} Updater FAILED: timed out after {HardTimeout.TotalMinutes:0} minutes with no progress");
                 Console.WriteLine($"{entry.DisplayName}: TIMED OUT");
+                // Neither cts nor crossProcessLock is released on this path:
+                // runTask is abandoned here, not awaited, and may still be
+                // doing real work (e.g. still running an installer, still
+                // reading ctx.CancellationToken) well after this method
+                // returns. Releasing the cross-process lock here would let
+                // another process start a genuinely concurrent run against
+                // that still-active work - exactly the race the lock exists
+                // to prevent. Same tradeoff already accepted for cts:
+                // leaking one CTS and one Mutex handle on this rare timeout
+                // path costs far less than either an ObjectDisposedException
+                // in an unobserved task, or a real double-install race. Same
+                // precedent as UpdaterRunner.RunAndCloseLogAsync.
                 return UpdateOutcome.Failed;
             }
 
-            var result = await runTask;
-            Console.WriteLine($"{entry.DisplayName}: {result.Outcome} {result.Message}");
-            return result.Outcome;
+            try
+            {
+                var result = await runTask;
+                Console.WriteLine($"{entry.DisplayName}: {result.Outcome} {result.Message}");
+                return result.Outcome;
+            }
+            finally
+            {
+                cts.Dispose();
+                crossProcessLock.Dispose();
+            }
         }
         catch (Exception ex)
         {
+            crossProcessLock.Dispose();
             log.Line($"{updater.DisplayName} Updater FAILED: {ex.Message}");
             Console.WriteLine($"{entry.DisplayName}: FAILED {ex.Message}");
             return UpdateOutcome.Failed;

@@ -31,9 +31,7 @@ public sealed class ProgramStatus
     /// found installed, if it was.</summary>
     public string? TargetInstallPath { get; init; }
     public bool TargetInstalled { get; init; }
-    public string? TargetVersion { get; init; }
 
-    public bool LogExists { get; init; }
     public List<RunInfo> Runs { get; init; } = new();
 
     public RunStatus LatestStatus { get; set; } = RunStatus.Unknown;
@@ -41,9 +39,6 @@ public sealed class ProgramStatus
 
     /// <summary>Last real update, from the log or from stored history.</summary>
     public DateTime? LastUpdate { get; set; }
-
-    /// <summary>Last update found in the log file as it stands right now.</summary>
-    public DateTime? LastUpdateInLog { get; set; }
 
     /// <summary>
     /// True when the displayed update date came from stored history because

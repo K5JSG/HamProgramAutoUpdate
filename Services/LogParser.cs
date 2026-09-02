@@ -240,7 +240,6 @@ public static class LogParser
     private static RunInfo? ParseRun(string block, string headerDate)
     {
         var lines = block.Trim().Split('\n');
-        if (lines.Length == 0) return null;
 
         var datePart = headerDate.Split(' ', 'T').FirstOrDefault();
 

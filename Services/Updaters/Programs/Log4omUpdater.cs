@@ -88,7 +88,14 @@ public sealed class Log4omUpdater : UpdaterBase
         if (entry is not null)
         {
             var installDir = entry.InstallLocation ?? "";
-            var exePath = Path.Combine(installDir, "L4ONG.exe");
+            // Don't build a bogus bare "L4ONG.exe" (a relative path with no
+            // real directory) if InstallLocation wasn't populated - that
+            // would never File.Exists, so ExePath's post-install version
+            // check would fail forever even after a genuinely successful
+            // update. Fall back to the empty installDir instead, same as
+            // this codebase's other updaters do when an exe can't be
+            // resolved (e.g. PotaUpdater's `exe ?? installDir`).
+            var exePath = string.IsNullOrWhiteSpace(installDir) ? installDir : Path.Combine(installDir, "L4ONG.exe");
             var version = File.Exists(exePath) ? FileVersionHelper.ReadFileVersion(exePath) : entry.DisplayVersion;
             return new Target(Flavor.Full, exePath, installDir, version);
         }
@@ -591,9 +598,23 @@ public sealed class Log4omUpdater : UpdaterBase
                 if (!Directory.Exists(existingConfigDir) && Directory.Exists(newConfigDir))
                     DirectoryCopy.CopyAll(newConfigDir, existingConfigDir);
             }
-            catch (Exception)
+            catch (Exception updateEx)
             {
-                CopyExceptConfig(backupDir, installDir);
+                try
+                {
+                    CopyExceptConfig(backupDir, installDir);
+                }
+                catch (Exception restoreEx)
+                {
+                    // Both the update AND the restore-from-backup failed -
+                    // surface both rather than letting the restore failure
+                    // silently replace the original error the caller most
+                    // needs to see.
+                    throw new AggregateException(
+                        "Log4OM portable update failed and restoring the pre-update backup also failed - " +
+                        "the install directory may be left in a partially-updated state.",
+                        updateEx, restoreEx);
+                }
                 throw;
             }
         }

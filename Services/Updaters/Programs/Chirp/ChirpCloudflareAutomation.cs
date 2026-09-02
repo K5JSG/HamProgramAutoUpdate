@@ -281,12 +281,11 @@ public static class ChirpCloudflareAutomation
             root = new JsonObject();
         }
 
-        root["download"] = new JsonObject
-        {
-            ["default_directory"] = downloadDir,
-            ["prompt_for_download"] = false,
-            ["directory_upgrade"] = true,
-        };
+        var download = root["download"] as JsonObject ?? new JsonObject();
+        download["default_directory"] = downloadDir;
+        download["prompt_for_download"] = false;
+        download["directory_upgrade"] = true;
+        root["download"] = download;
         var safebrowsing = root["safebrowsing"] as JsonObject ?? new JsonObject();
         safebrowsing["enabled"] = false;
         root["safebrowsing"] = safebrowsing;

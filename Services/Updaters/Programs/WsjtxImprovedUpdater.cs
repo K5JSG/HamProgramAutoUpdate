@@ -446,6 +446,12 @@ public sealed class WsjtxImprovedUpdater : UpdaterBase
     {
         (Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
         (Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        // A per-user install registers only here, not under HKLM - without
+        // this root, FindRegistryKeyForInstallDir returns null for it, the
+        // backup/restore around the hash-detection probe is skipped
+        // entirely, and the probe's scratch-folder install hijacks the real
+        // install's uninstall entry with no way to restore it.
+        (Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
     };
 
     private static (RegistryKey Hive, string KeyPath)? FindRegistryKeyForInstallDir(string installDir)

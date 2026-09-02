@@ -264,6 +264,13 @@ public static class TaskSchedulerService
     /// extra run right after a successful 3am run costs nothing beyond the
     /// version checks. The short delay keeps it from competing with the
     /// Updater Dashboard task for the first couple minutes after logon.
+    ///
+    /// ExecutionTimeLimit is set well above HeadlessUpdateRunner's own
+    /// worst-case budget (12 programs x its 15-minute internal HardTimeout
+    /// each = up to 3 hours if several were independently stuck at once,
+    /// e.g. a systemic network outage) - Task Scheduler force-killing the
+    /// whole process at a shorter external limit would silently skip every
+    /// program not yet reached that day with no error logged anywhere.
     /// </summary>
     private static string BuildUpdaterTaskXml(string exePath, TimeOnly dailyTime)
     {
@@ -315,7 +322,7 @@ public static class TaskSchedulerService
     <Hidden>false</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <WakeToRun>false</WakeToRun>
-    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT4H</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">

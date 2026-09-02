@@ -18,7 +18,10 @@ public static class ExeFinder
     /// product "BktTimeSync" - confirmed live against the real download;
     /// without this tier that case fell through to the "first candidate"
     /// guess below, only ever correct because the zip happened to contain
-    /// nothing else), then - if there is exactly one non-uninstaller exe at
+    /// nothing else - if more than one candidate matches this tier it's
+    /// just as much a guess as the final tier below, so it invokes
+    /// <paramref name="onAmbiguous"/> too rather than silently picking one),
+    /// then - if there is exactly one non-uninstaller exe at
     /// all - that one, unambiguous regardless of its name. Only when none of
     /// that resolves it does this guess at the first candidate found,
     /// invoking <paramref name="onAmbiguous"/> (if given) so a genuinely
@@ -40,9 +43,16 @@ public static class ExeFinder
                 string.Equals(Path.GetFileNameWithoutExtension(p), productName, StringComparison.OrdinalIgnoreCase));
             if (exact is not null) return exact;
 
-            var prefixed = candidates.FirstOrDefault(p =>
-                Path.GetFileNameWithoutExtension(p).StartsWith(productName, StringComparison.OrdinalIgnoreCase));
-            if (prefixed is not null) return prefixed;
+            var prefixed = candidates.Where(p =>
+                Path.GetFileNameWithoutExtension(p).StartsWith(productName, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (prefixed.Count == 1) return prefixed[0];
+            if (prefixed.Count > 1)
+            {
+                onAmbiguous?.Invoke(
+                    $"{prefixed.Count} exes are all prefixed with \"{productName}\" - guessing " +
+                    $"\"{Path.GetFileName(prefixed[0])}\".");
+                return prefixed[0];
+            }
 
             if (candidates.Count == 1) return candidates[0];
 

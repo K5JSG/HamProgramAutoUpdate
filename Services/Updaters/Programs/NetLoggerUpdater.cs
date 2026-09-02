@@ -39,6 +39,9 @@ public sealed class NetLoggerUpdater : UpdaterBase
     private static readonly Regex ReleaseNotesVersionRegex = new(
         @"Version\s+(\d+\.\d+\.\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex MsiUrlInResponseRegex = new(
+        @"https?://[^\s""'<>]+\.msi", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public NetLoggerUpdater() : base("netlogger", "NetLogger", DetectNetLogger)
     {
     }
@@ -163,7 +166,13 @@ public sealed class NetLoggerUpdater : UpdaterBase
                 else
                 {
                     var responseBody = await response.Content.ReadAsStringAsync(ctx.CancellationToken);
-                    var urlMatch = Regex.Match(responseBody, @"https?://[^\s""'<>]+\.msi", RegexOptions.IgnoreCase);
+                    var urlMatch = MsiUrlInResponseRegex.Match(responseBody);
+                    // Best-effort guess if the response text didn't contain a
+                    // usable link - not confirmed against a real response
+                    // shaped this way, but a wrong guess just fails the
+                    // download cleanly below rather than fetching the wrong
+                    // file (DownloadToFileAsync's EnsureSuccessStatusCode +
+                    // retry-then-fail).
                     var downloadUrl = urlMatch.Success ? urlMatch.Value : $"https://netlogger.org/downloads/{fileName}";
 
                     ctx.Log.Line($"Downloading {downloadUrl} ...");

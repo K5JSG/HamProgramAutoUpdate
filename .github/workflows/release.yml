@@ -38,6 +38,16 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Version "${{ steps.version.outputs.version }}"
 
+      - name: Checksum the installer
+        # SelfUpdateService.cs verifies this before launching a downloaded
+        # update elevated - see that file for why. Must ship alongside every
+        # -setup.exe asset or the app will refuse to self-update.
+        shell: pwsh
+        run: |
+          $setupExe = "dist\HamProgramAutoUpdate-v${{ steps.version.outputs.version }}-setup.exe"
+          $hash = (Get-FileHash $setupExe -Algorithm SHA256).Hash
+          Set-Content -Path "$setupExe.sha256" -Value $hash -NoNewline -Encoding ascii
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,6 +55,7 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" `
             "dist\HamProgramAutoUpdate-v${{ steps.version.outputs.version }}-setup.exe" `
+            "dist\HamProgramAutoUpdate-v${{ steps.version.outputs.version }}-setup.exe.sha256" `
             "dist\HamProgramAutoUpdate-v${{ steps.version.outputs.version }}.exe" `
             --title "Ham Program Auto Update v${{ steps.version.outputs.version }}" `
             --notes "See the commit history for what changed in this release."

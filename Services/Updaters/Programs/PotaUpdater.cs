@@ -48,7 +48,14 @@ public sealed class PotaUpdater : UpdaterBase
         // product's real version - see ExeFinder's own doc comment for the
         // real bug this already caused before it started preferring the exe
         // matching the product name.
-        var exe = installDir is { } loc ? ExeFinder.FindByProductName(loc, config.ProductName) : null;
+        // No UpdaterLog available here (DetectTarget's TargetDetector delegate
+        // takes no context - see TargetDetection.cs), so ambiguity goes to the
+        // console rather than being silently dropped, same fallback channel
+        // UpdaterLog.BeginRun itself uses when it has no log to write to yet.
+        var exe = installDir is { } loc
+            ? ExeFinder.FindByProductName(loc, config.ProductName,
+                onAmbiguous: msg => Console.WriteLine($"POTA Activator detection: {msg}"))
+            : null;
         var version = exe is not null ? FileVersionHelper.ReadFileVersion(exe) : entry.DisplayVersion;
         return DetectedTarget.Found(exe ?? installDir, version);
     }
@@ -224,10 +231,24 @@ public sealed class PotaUpdater : UpdaterBase
             {
                 CopyDirectoryPreserving(stagingDir, installDir, preserveGlobs);
             }
-            catch (Exception)
+            catch (Exception updateEx)
             {
-                if (Directory.Exists(installDir)) Directory.Delete(installDir, recursive: true);
-                if (Directory.Exists(backupDir)) DirectoryCopy.CopyAll(backupDir, installDir);
+                try
+                {
+                    if (Directory.Exists(installDir)) Directory.Delete(installDir, recursive: true);
+                    if (Directory.Exists(backupDir)) DirectoryCopy.CopyAll(backupDir, installDir);
+                }
+                catch (Exception restoreEx)
+                {
+                    // Both the update AND the restore-from-backup failed -
+                    // surface both rather than letting the restore failure
+                    // silently replace the original error the caller most
+                    // needs to see.
+                    throw new AggregateException(
+                        "POTA update failed and restoring the pre-update backup also failed - " +
+                        "the install directory may be left in a partially-updated state.",
+                        updateEx, restoreEx);
+                }
                 throw;
             }
         }
@@ -299,6 +320,13 @@ public sealed class PotaUpdaterConfig
     public string InstallerArgs { get; set; } = "/S";
     public bool IncludePrereleases { get; set; }
     public string? GitHubToken { get; set; }
+    /// <summary>Files/folders under the install dir that survive a zip
+    /// update. MatchesAnyGlob only supports a single LEADING "*" wildcard
+    /// (e.g. "*.ini") or a plain exact name/relative-path entry (e.g.
+    /// "logs", "data/settings.ini") - it is not general glob syntax. An
+    /// entry with a wildcard anywhere else (e.g. "backup*", "*data*") will
+    /// silently never match anything, so the file it was meant to protect
+    /// would be overwritten on the next update instead of preserved.</summary>
     public string[] PreserveGlobs { get; set; } = { "*.ini", "*.json", "*.db", "*.csv", "logs" };
 
     private static string FilePath => Path.Combine(
@@ -341,7 +369,21 @@ public sealed class PotaUpdaterConfig
 
         if (DpapiProtector.IsProtected(config.GitHubToken))
         {
-            config.GitHubToken = DpapiProtector.Unprotect(config.GitHubToken);
+            try
+            {
+                config.GitHubToken = DpapiProtector.Unprotect(config.GitHubToken);
+            }
+            catch (Exception)
+            {
+                // DPAPI ties encryption to this exact Windows user+machine -
+                // a config file copied to a new PC, a fresh reinstall, or a
+                // different Windows account can't decrypt it. Clear just the
+                // unreadable token rather than letting this propagate into
+                // Load()'s outer catch, which would otherwise discard the
+                // WHOLE config (Repository/ProductName/AssetPattern/etc, not
+                // just the token) back to hardcoded defaults.
+                config.GitHubToken = null;
+            }
             return;
         }
 
@@ -367,9 +409,6 @@ internal sealed class GitHubRelease
 {
     [JsonPropertyName("tag_name")]
     public string TagName { get; set; } = "";
-
-    [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; set; }
 
     [JsonPropertyName("assets")]
     public List<GitHubAsset> Assets { get; set; } = new();

@@ -30,7 +30,7 @@ public static class HttpDownloader
     /// <summary>Downloads to <paramref name="destPath"/>, retrying on
     /// failure, and validates the result looks like a real Windows
     /// installer (exe/msi/zip) rather than an error page.</summary>
-    /// <summary>
+    /// <remarks>
     /// <paramref name="perAttemptTimeout"/> exists because of a real,
     /// confirmed-live gap: HttpClient.Timeout does NOT reliably bound a
     /// GetAsync(..., HttpCompletionOption.ResponseHeadersRead, ...) call's
@@ -43,7 +43,7 @@ public static class HttpDownloader
     /// CancellationTokenSource, linked to the caller's token, so a stalled
     /// attempt is actually cancelled and moves on to the next retry instead
     /// of hanging indefinitely.
-    /// </summary>
+    /// </remarks>
     public static async Task<(bool ok, string? error)> DownloadToFileAsync(
         HttpClient http,
         string url,
