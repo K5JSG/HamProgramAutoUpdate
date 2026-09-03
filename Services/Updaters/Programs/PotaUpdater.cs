@@ -317,7 +317,14 @@ public sealed class PotaUpdaterConfig
     public string Repository { get; set; } = "K5JSG/POTA-Activator-Park-Activations";
     public string ProductName { get; set; } = "POTA Activator Park Activations";
     public string AssetPattern { get; set; } = @".*\.(msi|exe|zip)$";
-    public string InstallerArgs { get; set; } = "/S";
+    // The setup exe is built with Inno Setup, not NSIS - "/S" (NSIS's silent
+    // flag) is meaningless to Inno, so the installer showed its full GUI and
+    // sat waiting for input until SilentExeInstaller.RunAsync's 300s timeout
+    // killed it (exit code -1). Confirmed live 2026-09-03: Select-String
+    // over the downloaded 1.4.0 setup exe matched "Inno Setup" /
+    // "Inno Setup Setup Data", and the stuck process's window title was
+    // literally "Setup - POTA Activator Park Activations 1.4.0".
+    public string InstallerArgs { get; set; } = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
     public bool IncludePrereleases { get; set; }
     public string? GitHubToken { get; set; }
     /// <summary>Files/folders under the install dir that survive a zip
