@@ -1,5 +1,6 @@
 ﻿using System.Net.Http;
 using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
@@ -124,7 +125,7 @@ public sealed class NetLoggerUpdater : UpdaterBase
         }
 
         var settings = UpdaterSettings.Load();
-        var tempDir = Path.Combine(Path.GetTempPath(), $"NetLoggerUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"NetLoggerUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var msiPath = Path.Combine(tempDir, fileName);
 

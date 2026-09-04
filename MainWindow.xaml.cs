@@ -55,6 +55,31 @@ public partial class MainWindow : Window
         UpdateAvailableButton.Visibility = Visibility.Visible;
     }
 
+    /// <summary>Manual counterpart to the automatic 6-hour CheckForUpdateAsync
+    /// timer - unlike that background check, this one always tells the user
+    /// something happened, even when there's nothing new.</summary>
+    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        CheckForUpdatesButton.IsEnabled = false;
+        var originalContent = CheckForUpdatesButton.Content;
+        CheckForUpdatesButton.Content = "Checking...";
+
+        try
+        {
+            await CheckForUpdateAsync();
+            if (_pendingUpdate is null)
+            {
+                MessageBox.Show($"You're running the latest version (v{AppInfo.ShortVersion}).",
+                    "Up to date", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        finally
+        {
+            CheckForUpdatesButton.Content = originalContent;
+            CheckForUpdatesButton.IsEnabled = true;
+        }
+    }
+
     private async void UpdateAvailable_Click(object sender, RoutedEventArgs e)
     {
         if (_pendingUpdate is not { } release) return;

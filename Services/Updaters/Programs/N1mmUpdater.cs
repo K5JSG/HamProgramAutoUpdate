@@ -1,5 +1,6 @@
 ﻿using System.Net.Http;
 using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
@@ -111,7 +112,7 @@ public sealed class N1mmUpdater : UpdaterBase
 
         CloseIfRunning(target.InstallPath, ctx);
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"N1mmUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"N1mmUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var installerPath = Path.Combine(tempDir, $"N1MM-Logger-Update-{latest}.exe");
 

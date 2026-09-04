@@ -42,20 +42,19 @@ public static class SelfUpdateService
 
     /// <summary>
     /// Where a downloaded setup exe is staged before being launched. Kept
-    /// under this app's own LocalAppData folder (alongside update_history.json)
-    /// rather than the Windows temp folder so a user only ever needs one
-    /// antivirus/Norton 360 folder exclusion for this app's own downloads,
-    /// not a blanket exclusion on the shared system temp directory.
+    /// under AppPaths.TempDir, the one permanent subfolder of the shared
+    /// Windows temp directory every temp file this app creates is routed
+    /// into, so a user only ever needs one antivirus/Norton 360 folder
+    /// exclusion for everything this app's update flow (and every program
+    /// updater's own downloads) ever touches on disk.
     /// </summary>
-    private static string DownloadDir => Path.Combine(HistoryStore.StateDir, "Updates");
+    private static string DownloadDir => Path.Combine(AppPaths.TempDir, "Updates");
 
     /// <summary>
     /// Where Setup.exe itself is pointed to self-extract into (see
-    /// DownloadAndLaunchInstallerAsync) instead of the shared Windows temp
-    /// folder - same reasoning as DownloadDir: one antivirus exclusion
-    /// covers everything this app's update flow ever touches on disk.
+    /// DownloadAndLaunchInstallerAsync) - same reasoning as DownloadDir.
     /// </summary>
-    private static string InstallTempDir => Path.Combine(HistoryStore.StateDir, "InstallTemp");
+    private static string InstallTempDir => Path.Combine(AppPaths.TempDir, "InstallTemp");
 
     /// <summary>
     /// Deletes any setup exe and self-extracted install files left behind by

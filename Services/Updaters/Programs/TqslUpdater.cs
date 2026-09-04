@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
@@ -75,7 +76,7 @@ public sealed class TqslUpdater : UpdaterBase
             return UpdateResult.UpToDate("Dry run");
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"TqslUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"TqslUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var msiPath = Path.Combine(tempDir, $"tqsl-{latest}.msi");
 

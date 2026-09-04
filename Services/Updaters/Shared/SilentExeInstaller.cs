@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using HamProgramAutoUpdate.Services;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Shared;
 
@@ -80,6 +81,15 @@ public static class SilentExeInstaller
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+
+        // UseShellExecute = false gives this child process its own
+        // environment block seeded from ours - setting just these two keys
+        // routes an Inno/NSIS installer's own self-extraction folder (e.g.
+        // Inno's "%TEMP%\is-XXXXX.tmp") into AppPaths.TempDir instead of the
+        // shared Windows temp folder, without touching this process's own
+        // TMP/TEMP.
+        psi.Environment["TMP"] = AppPaths.TempDir;
+        psi.Environment["TEMP"] = AppPaths.TempDir;
 
         // NSIS's /D=<dir> switch must be the last token on the command line
         // and completely unquoted, even when <dir> contains spaces - NSIS

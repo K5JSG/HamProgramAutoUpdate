@@ -26,6 +26,11 @@
                         Style="{StaticResource PrimaryButton}"
                         Click="UpdateAvailable_Click" Margin="0,0,12,0" />
 
+                <Button x:Name="CheckForUpdatesButton" Content="Check for Updates"
+                        Style="{StaticResource SmallButton}"
+                        ToolTip="Check GitHub for a newer version of this program."
+                        Click="CheckForUpdates_Click" Margin="0,0,12,0" />
+
                 <Border x:Name="ElevationBadge"
                         CornerRadius="10" Padding="9,3" Margin="0,0,12,0"
                         Background="#26FFC300" VerticalAlignment="Center">

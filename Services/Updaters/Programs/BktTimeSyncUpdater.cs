@@ -1,5 +1,6 @@
 ﻿using System.IO.Compression;
 using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
@@ -65,7 +66,7 @@ public sealed class BktTimeSyncUpdater : UpdaterBase
         }
 
         var downloadUrl = $"https://www.maniaradio.it/OldVersion/elenco.php?nomefile=BktTimeSync%2FBktTimeSync_{latest}.zip";
-        var tempDir = Path.Combine(Path.GetTempPath(), $"BktTimeSyncUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"BktTimeSyncUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var zipPath = Path.Combine(tempDir, "BktTimeSync.zip");
 

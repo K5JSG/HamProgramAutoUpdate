@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
@@ -184,7 +185,7 @@ public sealed class Log4omUpdater : UpdaterBase
             return UpdateResult.Skipped("Program is running");
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"Log4omUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"Log4omUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var zipPath = Path.Combine(tempDir, "log4om.zip");
 
@@ -286,8 +287,11 @@ public sealed class Log4omUpdater : UpdaterBase
         // private "%TEMP%\is-XXXXX.tmp\" folder before launching it -
         // confirmed live (that's exactly where OmniRigSetup.exe showed up).
         // Scoping to this prefix means we can never act on a process that
-        // isn't something Inno itself just extracted.
-        var innoStagingPrefix = Path.Combine(Path.GetTempPath(), "is-");
+        // isn't something Inno itself just extracted. TMP/TEMP below are
+        // redirected to AppPaths.TempDir for this child process only (see
+        // that override), so this matches Inno's actual staging location
+        // rather than the shared Windows temp folder.
+        var innoStagingPrefix = Path.Combine(AppPaths.TempDir, "is-");
         // One decision per bundled installer, even though it (like our own
         // outer one) may show up as more than one process over time via the
         // same self-relaunch-as-.tmp pattern - keyed by its staging folder,
@@ -303,6 +307,12 @@ public sealed class Log4omUpdater : UpdaterBase
         };
         foreach (var a in new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" })
             psi.ArgumentList.Add(a);
+        // UseShellExecute = false gives this child process its own
+        // environment block seeded from ours - setting just these two keys
+        // overrides Inno's %TEMP%\is-XXXXX.tmp self-extraction target
+        // without touching this process's own TMP/TEMP.
+        psi.Environment["TMP"] = AppPaths.TempDir;
+        psi.Environment["TEMP"] = AppPaths.TempDir;
 
         using (var proc = Process.Start(psi))
         {
@@ -517,6 +527,8 @@ public sealed class Log4omUpdater : UpdaterBase
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        psi.Environment["TMP"] = AppPaths.TempDir;
+        psi.Environment["TEMP"] = AppPaths.TempDir;
         foreach (var a in new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" })
             psi.ArgumentList.Add(a);
 
