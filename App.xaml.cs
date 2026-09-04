@@ -231,6 +231,7 @@ public partial class App : Application
         _tray?.Dispose();
         _singleInstance?.Dispose();
         Runner?.Dispose();
+        AppPaths.CleanupBestEffort();
         base.OnExit(e);
     }
 }

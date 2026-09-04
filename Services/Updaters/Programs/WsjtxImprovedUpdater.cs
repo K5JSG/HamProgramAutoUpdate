@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 using Microsoft.Win32;
 
@@ -265,7 +266,7 @@ public sealed class WsjtxImprovedUpdater : UpdaterBase
         var chosen = found[variant];
         var downloadUrl = WebUtility.HtmlDecode(chosen.Url.Trim());
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"WsjtxImprovedUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"WsjtxImprovedUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var installerPath = Path.Combine(tempDir, Path.GetFileName(new Uri(downloadUrl).AbsolutePath));
 
@@ -396,7 +397,7 @@ public sealed class WsjtxImprovedUpdater : UpdaterBase
                 if (ct.IsCancellationRequested) break;
                 if (!found.TryGetValue(candidateVariant, out var info)) continue;
 
-                var scratchDir = Path.Combine(Path.GetTempPath(), $"WsjtxImprovedProbe_{Guid.NewGuid():N}");
+                var scratchDir = Path.Combine(AppPaths.TempDir, $"WsjtxImprovedProbe_{Guid.NewGuid():N}");
                 var probeInstallerPath = scratchDir + ".exe";
 
                 try

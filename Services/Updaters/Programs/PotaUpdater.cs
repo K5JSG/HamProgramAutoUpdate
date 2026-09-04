@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 using AppInfo = HamProgramAutoUpdate.AppInfo;
 
@@ -125,7 +126,7 @@ public sealed class PotaUpdater : UpdaterBase
             return UpdateResult.Skipped("Program is running");
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"PotaUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"PotaUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var downloadPath = Path.Combine(tempDir, asset.Name);
 
@@ -218,7 +219,7 @@ public sealed class PotaUpdater : UpdaterBase
     private static void InstallZip(string zipPath, string installDir, string[] preserveGlobs)
     {
         var backupDir = installDir.TrimEnd('\\') + ".backup";
-        var stagingDir = Path.Combine(Path.GetTempPath(), $"PotaStage_{Guid.NewGuid():N}");
+        var stagingDir = Path.Combine(AppPaths.TempDir, $"PotaStage_{Guid.NewGuid():N}");
 
         try
         {

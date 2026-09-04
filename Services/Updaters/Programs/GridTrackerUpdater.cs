@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
@@ -89,7 +90,7 @@ public sealed class GridTrackerUpdater : UpdaterBase
             return UpdateResult.UpToDate("Dry run");
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"GridTrackerUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"GridTrackerUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var installerPath = Path.Combine(tempDir, "GridTracker-setup.exe");
 

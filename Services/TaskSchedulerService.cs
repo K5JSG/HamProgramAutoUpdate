@@ -198,7 +198,7 @@ public static class TaskSchedulerService
         if (string.IsNullOrEmpty(exePath))
             return (false, "Could not determine this program's own path.");
 
-        var xmlPath = Path.Combine(Path.GetTempPath(),
+        var xmlPath = Path.Combine(AppPaths.TempDir,
             $"HamProgramAutoUpdateTask_{Guid.NewGuid():N}.xml");
 
         try
@@ -348,7 +348,7 @@ public static class TaskSchedulerService
         if (string.IsNullOrEmpty(exePath))
             return (false, "Could not determine this program's own path.");
 
-        var xmlPath = Path.Combine(Path.GetTempPath(),
+        var xmlPath = Path.Combine(AppPaths.TempDir,
             $"HamProgramAutoUpdateUpdaterTask_{Guid.NewGuid():N}.xml");
 
         try

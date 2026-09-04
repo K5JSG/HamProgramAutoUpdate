@@ -1,4 +1,5 @@
-﻿using System.Net.Http;
+﻿using System.Globalization;
+using System.Net.Http;
 using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 
@@ -50,8 +51,76 @@ public static class HeadlessUpdateRunner
     private static HttpClient NewHttpClient() =>
         new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(60) };
 
+    /// <summary>
+    /// The "Program Update Scripts" task has two triggers on the same task
+    /// (see TaskSchedulerService.BuildUpdaterTaskXml): the daily 3am
+    /// CalendarTrigger, whose StartWhenAvailable fires it as a catch-up run
+    /// the moment Task Scheduler notices a PC that was off/asleep through
+    /// 3am, and a LogonTrigger 2 minutes after sign-in as the more reliable
+    /// fix for that same case. MultipleInstancesPolicy=IgnoreNew only blocks
+    /// a second instance while the first is still *running* - it does
+    /// nothing once the catch-up run has already finished, which it usually
+    /// has within seconds since every updater no-ops when current. Result:
+    /// two full runs back to back around every boot, in whichever order the
+    /// triggers happen to fire. This marker file + mutex makes a real
+    /// (non-dry-run) run skip entirely if another one already completed
+    /// within RecentFullRunWindow, so only one of the two triggers actually
+    /// does anything.
+    /// </summary>
+    private static readonly TimeSpan RecentFullRunWindow = TimeSpan.FromMinutes(20);
+
+    private static string LastFullRunMarkerPath => Path.Combine(HistoryStore.StateDir, "last_full_run.txt");
+
+    /// <summary>Returns false (meaning: skip this run) if a real run already
+    /// completed within RecentFullRunWindow; otherwise claims the window for
+    /// this run and returns true. Fails open (allows the run) on any I/O
+    /// problem - a guard-file glitch must never be the reason a real update
+    /// run never happens.</summary>
+    private static bool TryClaimFullRun()
+    {
+        try
+        {
+            Directory.CreateDirectory(HistoryStore.StateDir);
+
+            using var mutex = new Mutex(false, @"Global\HamProgramAutoUpdate_FullRunGuard");
+            var acquired = false;
+            try
+            {
+                try { acquired = mutex.WaitOne(TimeSpan.FromSeconds(5)); }
+                catch (AbandonedMutexException) { acquired = true; }
+
+                if (File.Exists(LastFullRunMarkerPath) &&
+                    DateTime.TryParse(File.ReadAllText(LastFullRunMarkerPath), CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind, out var last) &&
+                    DateTime.UtcNow - last < RecentFullRunWindow)
+                {
+                    return false;
+                }
+
+                File.WriteAllText(LastFullRunMarkerPath, DateTime.UtcNow.ToString("o"));
+                return true;
+            }
+            finally
+            {
+                if (acquired) mutex.ReleaseMutex();
+            }
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
     public static async Task<int> RunAllAsync(bool dryRun = false)
     {
+        if (!dryRun && !TryClaimFullRun())
+        {
+            Console.WriteLine(
+                $"A full update run already completed within the last {RecentFullRunWindow.TotalMinutes:0} minutes " +
+                "(the missed-schedule catch-up and logon triggers likely both fired around this boot) - skipping.");
+            return 0;
+        }
+
         using var http = NewHttpClient();
         var anyFailed = false;
 

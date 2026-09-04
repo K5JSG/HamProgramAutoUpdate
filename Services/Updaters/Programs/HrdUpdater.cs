@@ -1,5 +1,6 @@
 ﻿using System.Text.RegularExpressions;
 using Microsoft.Win32;
+using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
 using AppInfo = HamProgramAutoUpdate.AppInfo;
 
@@ -133,7 +134,7 @@ public sealed class HrdUpdater : UpdaterBase
 
         CloseIfRunning(target.InstallPath, ctx);
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"HrdUpdate_{Guid.NewGuid():N}");
+        var tempDir = Path.Combine(AppPaths.TempDir, $"HrdUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var installerPath = Path.Combine(tempDir, "setupHRD.exe");
 
