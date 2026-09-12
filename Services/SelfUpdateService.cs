@@ -48,13 +48,13 @@ public static class SelfUpdateService
     /// exclusion for everything this app's update flow (and every program
     /// updater's own downloads) ever touches on disk.
     /// </summary>
-    private static string DownloadDir => Path.Combine(AppPaths.TempDir, "Updates");
+    private static string DownloadDir => Path.Combine(AppPaths.TempDir, AppPaths.SelfUpdateDownloadSubfolder);
 
     /// <summary>
     /// Where Setup.exe itself is pointed to self-extract into (see
     /// DownloadAndLaunchInstallerAsync) - same reasoning as DownloadDir.
     /// </summary>
-    private static string InstallTempDir => Path.Combine(AppPaths.TempDir, "InstallTemp");
+    private static string InstallTempDir => Path.Combine(AppPaths.TempDir, AppPaths.SelfUpdateInstallTempSubfolder);
 
     /// <summary>
     /// Deletes any setup exe and self-extracted install files left behind by
