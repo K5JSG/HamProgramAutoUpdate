@@ -136,6 +136,19 @@ public partial class App : Application
         // Always start minimized to the tray, regardless of how the exe was
         // launched (logon task, desktop shortcut, Start menu, ...) - the
         // dashboard only opens when the user asks for it via the tray icon.
+
+        // Best-effort: recreate the "Program Update Scripts" scheduled task
+        // if a previous install/reinstall didn't leave it behind (confirmed
+        // reachable: the self-update flow relaunches Setup.exe as a full
+        // interactive wizard - see SelfUpdateService - and its "check for
+        // updates automatically" task checkbox is easy to click past without
+        // re-checking). Only the unattended nightly/logon runs depend on this
+        // task; the Run buttons run every updater in-process and no longer
+        // need it (see MainWindow.RunAll_Click). Off the UI thread since
+        // schtasks.exe calls can take a few seconds; never surfaced to the
+        // user since a failure here just means the next manual run needs to
+        // be interactive, not silently broken.
+        _ = Task.Run(() => TaskSchedulerService.ResolveOrRecreateUpdaterTask());
     }
 
     private void BuildTrayIcon()
@@ -186,33 +199,21 @@ public partial class App : Application
 
     private void RunAllUpdates()
     {
-        var task = TaskSchedulerService.ResolveUpdaterTask();
-        if (task is null)
+        if (Runner.AnyRunning())
         {
-            _tray?.ShowBalloonTip(5000, "Ham Program Auto Update",
-                $"No scheduled task named \"{TaskSchedulerService.UpdaterTaskName}\" was found.",
-                Forms.ToolTipIcon.Warning);
+            _tray?.ShowBalloonTip(3000, "Ham Program Auto Update",
+                "An update is already running.", Forms.ToolTipIcon.Info);
             return;
         }
 
-        if (TaskSchedulerService.IsRunning(task))
-        {
-            _tray?.ShowBalloonTip(3000, "Ham Program Auto Update",
-                "The update task is already running.", Forms.ToolTipIcon.Info);
-            return;
-        }
+        // In-process, same as MainWindow.RunAll_Click and each card's own Run
+        // button - see that method's comment for why this no longer goes
+        // through the "Program Update Scripts" scheduled task.
+        foreach (var status in Status.GetAll())
+            Runner.Run(status.Key);
 
-        var error = TaskSchedulerService.RunTask(task);
-        if (error is not null)
-        {
-            _tray?.ShowBalloonTip(5000, "Ham Program Auto Update",
-                error, Forms.ToolTipIcon.Error);
-        }
-        else
-        {
-            _tray?.ShowBalloonTip(3000, "Ham Program Auto Update",
-                "Update scripts started.", Forms.ToolTipIcon.Info);
-        }
+        _tray?.ShowBalloonTip(3000, "Ham Program Auto Update",
+            "Update scripts started.", Forms.ToolTipIcon.Info);
     }
 
     private void ExitApp()

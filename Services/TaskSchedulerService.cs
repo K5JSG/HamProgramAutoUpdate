@@ -85,6 +85,27 @@ public static class TaskSchedulerService
     public static string? ResolveUpdaterTask()
         => UpdaterTaskCandidates.FirstOrDefault(TaskExists);
 
+    /// <summary>
+    /// Same as <see cref="ResolveUpdaterTask"/>, but (re)creates the task
+    /// with its default schedule if it's missing entirely, rather than just
+    /// reporting that. Needed because the self-update flow relaunches
+    /// Setup.exe interactively (see SelfUpdateService), and it's easy to
+    /// click through that wizard without re-checking the "Check for program
+    /// updates automatically" task box - silently leaving this task gone
+    /// with no obvious way to get it back short of a full reinstall. Safe to
+    /// call unprompted: this app's own manifest already requires
+    /// administrator, so no separate elevation is needed, and creating the
+    /// task is exactly what a normal install already does by default.
+    /// </summary>
+    public static (string? path, string? error) ResolveOrRecreateUpdaterTask()
+    {
+        var existing = ResolveUpdaterTask();
+        if (existing is not null) return (existing, null);
+
+        var (ok, error) = InstallUpdaterTask();
+        return ok ? (UpdaterTaskPath, null) : (null, error ?? "Could not create the scheduled task.");
+    }
+
     /// <summary>Status string for a task ("Running", "Ready", ...) or null.</summary>
     public static string? GetStatus(string taskPath)
     {

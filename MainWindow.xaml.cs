@@ -211,12 +211,12 @@ public partial class MainWindow : Window
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => Refresh();
 
-    private void RunAll_Click(object sender, RoutedEventArgs e)
+    private async void RunAll_Click(object sender, RoutedEventArgs e)
     {
         var confirm = MessageBox.Show(
             "Run all update scripts now?\n\n" +
-            $"This starts the \"{TaskSchedulerService.UpdaterTaskName}\" scheduled task, " +
-            "which checks every program for updates. It may take several minutes.",
+            "This checks every detected program for updates, one at a time, in the " +
+            "background. It may take several minutes.",
             "Run updates", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (confirm != MessageBoxResult.Yes) return;
@@ -224,39 +224,45 @@ public partial class MainWindow : Window
         // Also check whether the dashboard app itself has an update, same as
         // the 6-hour _updateCheckTimer - fire-and-forget, and it only ever
         // shows UpdateAvailableButton (never downloads/installs on its own),
-        // so it's safe to kick off regardless of whether the scheduled task
-        // below is found/started successfully.
+        // so it's safe to kick off regardless of the run below.
         _ = CheckForUpdateAsync();
 
-        var task = TaskSchedulerService.ResolveUpdaterTask();
-        if (task is null)
-        {
-            MessageBox.Show(
-                $"No scheduled task named \"{TaskSchedulerService.UpdaterTaskName}\" was found.\n\n" +
-                "Create it in Task Scheduler with one action per updater, or use the " +
-                "Run button on each card instead.",
-                "Task not found", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        if (TaskSchedulerService.IsRunning(task))
-        {
-            MessageBox.Show("The update task is already running.", "Already running",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var error = TaskSchedulerService.RunTask(task);
-        if (error is not null)
-        {
-            MessageBox.Show($"Could not start the task.\n\n{error}", "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
+        // Run every detected program's updater in-process, one at a time,
+        // through the same App.Runner each card's own Run button already
+        // uses, rather than triggering the "Program Update Scripts" scheduled
+        // task. That task (and the --run-updates CLI path behind it, see
+        // HeadlessUpdateRunner) exists for the *unattended* nightly/logon
+        // runs and silently skips a run entirely if one already completed
+        // within the last 20 minutes - a dedup guard meant to stop the daily
+        // trigger and the logon catch-up trigger from double-firing on the
+        // same boot. Going through the task here meant an explicit,
+        // interactive "run now" click could hit that same guard and silently
+        // do nothing with no error shown anywhere, since the skip happened
+        // inside a separate headless process. Running in-process instead
+        // sidesteps that guard entirely (and works even if the scheduled task
+        // itself is missing, e.g. after a reinstall that didn't recreate it).
+        // RunAllAsync (rather than each card's own fire-and-return Run())
+        // keeps every program's download/install work sequential instead of
+        // launching all of them at once, which could bog down an older or
+        // slower machine.
         _timer.Interval = TimeSpan.FromSeconds(3);
         _pollingFast = true;
+
+        var keys = App.Status.GetAll().Select(s => s.Key).ToList();
+        var errors = await App.Runner.RunAllAsync(keys);
+
         Refresh();
+
+        // Only worth surfacing when EVERY program failed to start (e.g. a
+        // self-update install is running right now, see
+        // UpdaterRunner.PauseForInstallAsync) - an individual program already
+        // being mid-run is the expected, silent case (its card just keeps
+        // showing its own spinner).
+        if (keys.Count > 0 && errors.Count == keys.Count)
+        {
+            MessageBox.Show($"Could not start any updaters.\n\n{errors[0]}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void ClearAll_Click(object sender, RoutedEventArgs e)

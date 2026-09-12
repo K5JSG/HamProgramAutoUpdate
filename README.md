@@ -45,7 +45,7 @@ A small teal dot next to *Last Update* means the date came from the dashboard's
 own records because the log no longer goes back that far.
 
 Per card: **Run** the updater now, **Clear** its log, or **View Log**.
-Across the top: run every updater through the scheduled task, clear all logs,
+Across the top: run every detected updater one at a time, clear all logs,
 or refresh.
 
 The app always starts minimized to the tray. Double-click the tray icon, or

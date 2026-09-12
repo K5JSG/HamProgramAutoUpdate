@@ -14,6 +14,19 @@ public interface IUpdaterRunner : IDisposable
     string? Run(string key);
 
     /// <summary>
+    /// Runs each of the given programs' updaters one at a time, in order -
+    /// waiting for one to finish before starting the next, unlike Run()
+    /// (which starts immediately and returns). Used by "Run Updates Now" (see
+    /// MainWindow.RunAll_Click) so a single click doesn't launch every
+    /// program's own download/install work all at once, which could bog down
+    /// an older or slower machine. Returns the Run() error for any program
+    /// that could not be started at all (already running, or an app update
+    /// installing) - not exceptions from the updaters themselves, which
+    /// already log their own outcome to their own log file.
+    /// </summary>
+    Task<IReadOnlyList<string>> RunAllAsync(IEnumerable<string> keys);
+
+    /// <summary>
     /// Blocks new Run() calls and waits for every currently-running updater
     /// to finish, so the caller can rely on no updater running - and
     /// therefore none calling Path.GetTempPath() - until the returned
@@ -70,6 +83,35 @@ public sealed class UpdaterRunner : IUpdaterRunner
         {
             return _running.Values.Any(t => !t.IsCompleted);
         }
+    }
+
+    public async Task<IReadOnlyList<string>> RunAllAsync(IEnumerable<string> keys)
+    {
+        var errors = new List<string>();
+
+        foreach (var key in keys)
+        {
+            var error = Run(key);
+            if (error is not null)
+            {
+                errors.Add(error);
+                continue;
+            }
+
+            Task<UpdateResult>? task;
+            lock (_lock) { _running.TryGetValue(key, out task); }
+
+            if (task is not null)
+            {
+                // Swallow: a real failure is already recorded in this
+                // program's own log by RunAndCloseLogAsync's catch block -
+                // this loop only needs to know when to move on to the next
+                // program, not why this one didn't succeed.
+                try { await task; } catch { }
+            }
+        }
+
+        return errors;
     }
 
     /// <summary>Start one program's updater. Returns an error string on failure to start.</summary>
