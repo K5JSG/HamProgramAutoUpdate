@@ -180,6 +180,4 @@ pattern adding. Two rules matter there:
 
 ## Licence
 
-Free to use, copy, modify, and distribute for non-commercial purposes only.
-Commercial use requires prior written authorization from the copyright
-holder. See [LICENSE](LICENSE.txt).
+GNU General Public License v3.0. See [LICENSE](LICENSE.txt).
