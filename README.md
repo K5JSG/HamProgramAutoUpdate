@@ -48,6 +48,25 @@ Per card: **Run** the updater now, **Clear** its log, or **View Log**.
 Across the top: run every updater through the scheduled task, clear all logs,
 or refresh.
 
+The app always starts minimized to the tray. Double-click the tray icon, or
+choose **Open Dashboard** from its right-click menu, to open the window -
+that menu also has **Run All Updates** and **Exit**.
+
+---
+
+## Self-updating
+
+The dashboard checks GitHub for newer releases of itself - not just the
+programs it tracks - on launch, every 6 hours, and whenever you click
+**Check for Updates** in the header. When one is found, an
+**Update to vX.Y.Z available** button takes its place; clicking that
+downloads the installer, verifies it against the release's published
+`.sha256` checksum, and launches it. The installer stops the running app and
+upgrades in place. See `Services/SelfUpdateService.cs`.
+
+The header's elevation badge (**ADMIN** / **NOT ADMIN**) shows whether the
+dashboard itself is running elevated.
+
 ---
 
 ## Where things live
