@@ -154,6 +154,11 @@ public sealed class CardViewModel
             ? "Already running"
             : "Run this program's updater now";
 
+    public Visibility StopVisibility => _s.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+
+    public string StopTooltip => "Stop this program's updater. It may take a moment to " +
+        "actually stop, and any file already downloaded or an install already underway is not undone.";
+
     // ------------------------------------------------------------- errors
 
     public string ErrorMessage => _s.ErrorMessage ?? "";

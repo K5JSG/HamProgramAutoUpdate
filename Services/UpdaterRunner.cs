@@ -14,6 +14,18 @@ public interface IUpdaterRunner : IDisposable
     string? Run(string key);
 
     /// <summary>
+    /// Requests that this program's in-progress updater stop as soon as it
+    /// next checks its cancellation token (between download chunks, before
+    /// launching the installer, etc.) - not an immediate kill. No-op if the
+    /// program isn't currently running. See CardViewModel.CanStop/StopOne_Click.
+    /// </summary>
+    void Cancel(string key);
+
+    /// <summary>Cancel() for every currently-running updater. Used by the
+    /// header's "Stop All" button.</summary>
+    void CancelAll();
+
+    /// <summary>
     /// Runs each of the given programs' updaters one at a time, in order -
     /// waiting for one to finish before starting the next, unlike Run()
     /// (which starts immediately and returns). Used by "Run Updates Now" (see
@@ -58,6 +70,7 @@ public sealed class UpdaterRunner : IUpdaterRunner
     private static readonly TimeSpan HardTimeout = TimeSpan.FromMinutes(10);
 
     private readonly Dictionary<string, Task<UpdateResult>> _running = new();
+    private readonly Dictionary<string, CancellationTokenSource> _cts = new();
     private readonly object _lock = new();
     private bool _installPending;
 
@@ -131,6 +144,9 @@ public sealed class UpdaterRunner : IUpdaterRunner
             if (_running.TryGetValue(key, out var existing) && !existing.IsCompleted)
                 return "This updater is already running.";
 
+            var cts = new CancellationTokenSource();
+            _cts[key] = cts;
+
             // Task.Run here too, not just inside RunAndCloseLogAsync's own
             // one: Task.Run always defers its delegate to the thread pool
             // rather than starting it inline, whereas calling an async
@@ -140,13 +156,37 @@ public sealed class UpdaterRunner : IUpdaterRunner
             // the caller's thread (the UI thread, for every card's Run
             // button) while still holding _lock, blocking IsRunning/
             // AnyRunning/Run for its duration.
-            _running[key] = Task.Run(() => RunAndCloseLogAsync(updater, entry, _http));
+            _running[key] = Task.Run(() => RunAndCloseLogAsync(updater, entry, _http, cts));
             return null;
         }
     }
 
+    /// <summary>See IUpdaterRunner.Cancel. Racing a run's own natural
+    /// completion (cts already Dispose()d by RunAndCloseLogAsync's finally
+    /// block) is expected, not a bug - Cancel() has nothing left to do at
+    /// that point.</summary>
+    public void Cancel(string key)
+    {
+        CancellationTokenSource? cts;
+        lock (_lock) { _cts.TryGetValue(key, out cts); }
+        if (cts is null) return;
+
+        try { cts.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    public void CancelAll()
+    {
+        List<CancellationTokenSource> all;
+        lock (_lock) { all = _cts.Values.ToList(); }
+
+        foreach (var cts in all)
+        {
+            try { cts.Cancel(); } catch (ObjectDisposedException) { }
+        }
+    }
+
     private static async Task<UpdateResult> RunAndCloseLogAsync(
-        IProgramUpdater updater, UpdaterEntry entry, HttpClient http)
+        IProgramUpdater updater, UpdaterEntry entry, HttpClient http, CancellationTokenSource cts)
     {
         var log = updater.CreateLog(UpdaterCatalog.LogPath(entry));
 
@@ -165,7 +205,6 @@ public sealed class UpdaterRunner : IUpdaterRunner
             return UpdateResult.Skipped("Already running via the scheduled task or another instance");
         }
 
-        var cts = new CancellationTokenSource();
         var ctx = new UpdaterContext(http, log, DryRun: false, Force: false, cts.Token);
 
         log.BeginRun(updater.DisplayName);

@@ -121,9 +121,14 @@ public static class SilentExeInstaller
         {
             await proc.WaitForExitAsync(linked?.Token ?? ct);
         }
-        catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
+        catch (OperationCanceledException)
         {
-            try { proc.Kill(entireProcessTree: true); } catch (Exception) { }
+            // Without this, a cancelled wait (the caller's own token, e.g. a
+            // user-pressed Stop button, not just this method's own timeout)
+            // left the installer running orphaned in the background -
+            // silently defeating the whole point of "stop this updater".
+            // Same fix already applied to MsiInstaller.InstallAsync.
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch (Exception) { }
             return (false, -1);
         }
 

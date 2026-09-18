@@ -44,9 +44,9 @@ Each program gets a card with:
 A small teal dot next to *Last Update* means the date came from the dashboard's
 own records because the log no longer goes back that far.
 
-Per card: **Run** the updater now, **Clear** its log, or **View Log**.
-Across the top: run every detected updater one at a time, clear all logs,
-or refresh.
+Per card: **Run** the updater now, **Stop** it while it's running, **Clear**
+its log, or **View Log**. Across the top: run every detected updater one at
+a time, stop every updater currently running, clear all logs, or refresh.
 
 The app always starts minimized to the tray. Double-click the tray icon, or
 choose **Open Dashboard** from its right-click menu, to open the window -

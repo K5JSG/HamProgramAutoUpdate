@@ -139,6 +139,12 @@ public partial class MainWindow : Window
 
         LastUpdatedText.Text = $"Last updated: {DateTime.Now:T}";
 
+        // Only reflects in-process runs (App.Runner) - CancelAll() has no
+        // way to reach the "Program Update Scripts" scheduled task's own
+        // separate process, so this button being enabled always means there
+        // is actually something it can stop.
+        StopAllButton.IsEnabled = items.Any(i => i.Model.IsRunning) || App.Runner.AnyRunning();
+
         UpdateElevationBadge();
         UpdatePollingRate(items);
     }
@@ -265,6 +271,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void StopAll_Click(object sender, RoutedEventArgs e)
+    {
+        App.Runner.CancelAll();
+        Refresh();
+    }
+
     private void ClearAll_Click(object sender, RoutedEventArgs e)
     {
         var confirm = MessageBox.Show(
@@ -307,6 +319,14 @@ public partial class MainWindow : Window
 
         _timer.Interval = TimeSpan.FromSeconds(3);
         _pollingFast = true;
+        Refresh();
+    }
+
+    private void StopOne_Click(object sender, RoutedEventArgs e)
+    {
+        if (KeyOf(sender) is not { } key) return;
+
+        App.Runner.Cancel(key);
         Refresh();
     }
 

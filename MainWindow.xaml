@@ -47,6 +47,11 @@
                         Style="{StaticResource PrimaryButton}"
                         Click="RunAll_Click" Margin="0,0,8,0" />
 
+                <Button x:Name="StopAllButton" Content="Stop All"
+                        Style="{StaticResource DangerButton}"
+                        ToolTip="Stop every updater that is currently running."
+                        Click="StopAll_Click" Margin="0,0,8,0" />
+
                 <Button Content="Clear Logs" Style="{StaticResource DangerButton}"
                         Click="ClearAll_Click" Margin="0,0,8,0" />
 
@@ -148,6 +153,11 @@
                                                     ToolTip="{Binding RunTooltip}"
                                                     Tag="{Binding Key}"
                                                     Click="RunOne_Click" Margin="0,0,8,0" />
+                                            <Button Content="Stop" Style="{StaticResource SmallDanger}"
+                                                    Visibility="{Binding StopVisibility}"
+                                                    ToolTip="{Binding StopTooltip}"
+                                                    Tag="{Binding Key}"
+                                                    Click="StopOne_Click" Margin="0,0,8,0" />
                                             <Button Content="Clear" Style="{StaticResource SmallDanger}"
                                                     Tag="{Binding Key}"
                                                     ToolTip="Empty this program's log. Its Last Update date is kept."
