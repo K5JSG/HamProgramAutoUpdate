@@ -11,6 +11,7 @@ public static class UpdaterRegistry
         {
             new BktTimeSyncUpdater(),
             new ChirpUpdater(),
+            new DXPeditionsUpdater(),
             new GridTrackerUpdater(),
             new HrdUpdater(),
             new Log4omUpdater(),

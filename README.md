@@ -8,9 +8,9 @@ The update logic for every tracked program runs in-process (no external
 updater scripts) - it scrapes each program's own download page, compares
 versions, and downloads and installs silently when one is out of date.
 
-Programs tracked: BktTimeSync, CHIRP, GridTracker, Ham Radio Deluxe, Log4OM,
-N1MM Logger+, NetLogger, POTA Activator, RT Systems, TQSL, WSJT-X and
-WSJT-X Improved.
+Programs tracked: BktTimeSync, CHIRP, DXPeditions Tracker, GridTracker,
+Ham Radio Deluxe, Log4OM, N1MM Logger+, NetLogger, POTA Activator,
+RT Systems, TQSL, WSJT-X and WSJT-X Improved.
 
 ---
 

@@ -42,6 +42,9 @@ public static class UpdaterCatalog
         new("chirp", "CHIRP",
             @"Chirp Update Script\chirp_updater.log"),
 
+        new("dxpeditions", "DXPeditions Tracker",
+            @"DXPeditions Updater\dxpeditions_updater.log"),
+
         new("gridtracker", "GridTracker",
             @"Gridtracker Update Script\gridtracker_updater.log"),
 
