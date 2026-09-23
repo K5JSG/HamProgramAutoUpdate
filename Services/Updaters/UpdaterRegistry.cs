@@ -18,6 +18,7 @@ public static class UpdaterRegistry
             new N1mmUpdater(),
             new NetLoggerUpdater(),
             new PotaUpdater(),
+            new PotaOfflineMapsUpdater(),
             new RtSystemsUpdater(),
             new TqslUpdater(),
             new WsjtxUpdater(),

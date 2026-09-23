@@ -257,12 +257,13 @@ public static class HeadlessUpdateRunner
             // directly would block this method too, and Task.WhenAny below
             // would never even get reached.
             var runTask = Task.Run(() => updater.RunAsync(ctx));
-            var winner = await Task.WhenAny(runTask, Task.Delay(HardTimeout));
+            var limit = updater.MaxRunTime ?? HardTimeout;
+            var winner = await Task.WhenAny(runTask, Task.Delay(limit));
 
             if (winner != runTask)
             {
                 cts.Cancel();
-                log.Line($"{updater.DisplayName} Updater FAILED: timed out after {HardTimeout.TotalMinutes:0} minutes with no progress");
+                log.Line($"{updater.DisplayName} Updater FAILED: timed out after {limit.TotalMinutes:0} minutes with no progress");
                 Console.WriteLine($"{entry.DisplayName}: TIMED OUT");
                 // Neither cts nor crossProcessLock is released on this path:
                 // runTask is abandoned here, not awaited, and may still be

@@ -22,6 +22,12 @@ public abstract class UpdaterBase : IProgramUpdater
 
     public virtual UpdaterLog CreateLog(string logPath) => new(logPath);
 
+    /// <summary>Declared here (not left to IProgramUpdater's default) so a
+    /// subclass's override is what the runners actually see - an interface
+    /// default is bound to the class that implements the interface, which
+    /// for every updater is this one.</summary>
+    public virtual TimeSpan? MaxRunTime => null;
+
     /// <summary>The standard "not installed, skip this run" result ten of
     /// the twelve updaters need verbatim (RT Systems' "no modules found"
     /// wording differs enough to stay custom; CHIRP doesn't use this shape

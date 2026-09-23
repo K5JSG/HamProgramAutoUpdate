@@ -63,6 +63,9 @@ public static class UpdaterCatalog
         new("pota", "POTA Activator",
             @"POTA Activator Parks Activations Updater\POTA_Activator_Parks_Activation.log"),
 
+        new("pota_offline_maps", "POTA Offline Maps",
+            @"POTA Offline Map Updater\pota_offline_maps_updater.log"),
+
         new("rt_systems", "RT Systems",
             @"RT Systems Update Script\rt_update_log.log"),
 

@@ -66,5 +66,10 @@ public interface IProgramUpdater
     /// future one ever needs a different log format.</summary>
     UpdaterLog CreateLog(string logPath);
 
+    /// <summary>How long one run may take before UpdaterRunner/
+    /// HeadlessUpdateRunner give up on it. null (every program except the
+    /// few that override it) means their standard HardTimeout.</summary>
+    TimeSpan? MaxRunTime => null;
+
     Task<UpdateResult> RunAsync(UpdaterContext ctx);
 }
