@@ -12,8 +12,9 @@ namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 /// HamRadioVSPESwitcher (K5JSG/HamRadioVSPESwitcher) - same shape as
 /// DXPeditions Tracker: GitHub Releases API, one Inno Setup exe asset per
 /// release, installed silently. The repo is private, so both the release
-/// lookup and the asset download are authenticated with the GitHub CLI's
-/// signed-in token (`gh auth token`) for the account this runs as.
+/// lookup and the asset download are authenticated with a read-only token
+/// kept in a local per-PC file (see <see cref="TokenFilePath"/>) - no
+/// GitHub CLI or other software needed.
 /// </summary>
 public sealed class HamRadioVSPESwitcherUpdater : UpdaterBase
 {
@@ -50,11 +51,11 @@ public sealed class HamRadioVSPESwitcherUpdater : UpdaterBase
         var target = DetectTarget();
         if (!target.IsInstalled) return SkipNotInstalled(ctx);
 
-        var token = await GetGhTokenAsync(ctx.CancellationToken);
+        var token = LoadToken(ctx.Log);
         if (token is null)
         {
-            ctx.Log.Line($"{ProductName} Updater FAILED: no GitHub login found - install the GitHub CLI and run 'gh auth login' as this user");
-            return UpdateResult.Failed("No GitHub login");
+            ctx.Log.Line($"{ProductName} Updater FAILED: no GitHub token configured - put a read-only token for {Repository} in {TokenFilePath}");
+            return UpdateResult.Failed("No GitHub token configured");
         }
 
         ctx.Log.Line($"Checking GitHub releases for {Repository}...");
@@ -183,52 +184,68 @@ public sealed class HamRadioVSPESwitcherUpdater : UpdaterBase
         }
     }
 
-    /// <summary>The GitHub CLI's token for its signed-in account, or null if
-    /// gh isn't installed or isn't signed in for the user this runs as.</summary>
-    private static async Task<string?> GetGhTokenAsync(CancellationToken ct)
-    {
-        var ghPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "GitHub CLI", "gh.exe");
-        if (!File.Exists(ghPath)) ghPath = "gh.exe"; // fall back to PATH
+    /// <summary>Per-PC, per-user file holding a fine-grained GitHub token
+    /// (read-only Contents access to just this repo). Never shipped or
+    /// committed - it's hand-created on each PC, the same idea as
+    /// PotaUpdaterConfig's GitHubToken.</summary>
+    private static string TokenFilePath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "HamProgramAutoUpdate", "vspe_switcher_config.json");
 
+    /// <summary>The token from <see cref="TokenFilePath"/>, or null if the
+    /// file is missing/empty/unreadable. Accepts either the bare token or
+    /// {"GitHubToken": "..."}. A plaintext token is rewritten in place as
+    /// DPAPI-encrypted JSON on first read, so it's only readable by this
+    /// Windows user on this PC from then on.</summary>
+    private static string? LoadToken(UpdaterLog log)
+    {
         try
         {
-            var psi = new ProcessStartInfo(ghPath)
+            if (!File.Exists(TokenFilePath)) return null;
+
+            var text = File.ReadAllText(TokenFilePath).Trim();
+            if (text.Length == 0) return null;
+
+            var stored = text;
+            if (text.StartsWith('{'))
             {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            psi.ArgumentList.Add("auth");
-            psi.ArgumentList.Add("token");
+                using var doc = JsonDocument.Parse(text);
+                stored = doc.RootElement.TryGetProperty("GitHubToken", out var value)
+                    ? value.GetString()?.Trim() ?? ""
+                    : "";
+                if (stored.Length == 0) return null;
+            }
 
-            using var process = Process.Start(psi);
-            if (process is null) return null;
+            if (DpapiProtector.IsProtected(stored))
+            {
+                try
+                {
+                    return DpapiProtector.Unprotect(stored);
+                }
+                catch (Exception)
+                {
+                    // Encrypted by a different Windows user or PC (e.g. the
+                    // file was copied over) - it can't be read here.
+                    log.Line($"The GitHub token in {TokenFilePath} was saved by a different Windows user or PC - replace it with the token itself.");
+                    return null;
+                }
+            }
 
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
-            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            _ = process.StandardError.ReadToEndAsync(timeout.Token);
             try
             {
-                await process.WaitForExitAsync(timeout.Token);
+                var json = JsonSerializer.Serialize(new { GitHubToken = DpapiProtector.Protect(stored) });
+                File.WriteAllText(TokenFilePath, json);
             }
-            catch (OperationCanceledException)
+            catch (Exception)
             {
-                try { process.Kill(entireProcessTree: true); } catch (Exception) { }
-                throw;
+                // Best-effort: the token still works this run; encrypting
+                // it at rest is retried next time.
             }
-
-            var token = (await stdout).Trim();
-            return process.ExitCode == 0 && token.Length > 0 ? token : null;
+            return stored;
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception ex)
         {
-            throw;
-        }
-        catch (Exception)
-        {
+            log.Line($"Could not read {TokenFilePath} ({ex.Message}).");
             return null;
         }
     }

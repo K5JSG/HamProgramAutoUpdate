@@ -49,7 +49,7 @@ public static class UpdaterCatalog
             @"Gridtracker Update Script\gridtracker_updater.log"),
 
         new("vspe_switcher", "HamRadioVSPESwitcher",
-            @"HamRadioVSPESwitcher Updaterspe_switcher_updater.log"),
+            @"HamRadioVSPESwitcher Updater\vspe_switcher_updater.log"),
 
         new("hrd", "Ham Radio Deluxe",
             @"HRD Update Script\HRD_Update_Script.log"),
