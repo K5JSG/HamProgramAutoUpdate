@@ -26,6 +26,7 @@ public partial class App : Application
             {
                 case "--install-task":
                     {
+                        TaskSchedulerService.MigrateLegacyTasks();
                         var (ok, error) = TaskSchedulerService.InstallDashboardTask();
                         if (!ok) Console.Error.WriteLine(error);
                         Shutdown(ok ? 0 : 1);
@@ -40,6 +41,7 @@ public partial class App : Application
                     }
                 case "--install-updates-task":
                     {
+                        TaskSchedulerService.MigrateLegacyTasks();
                         var (ok, error) = TaskSchedulerService.InstallUpdaterTask();
                         if (!ok) Console.Error.WriteLine(error);
                         Shutdown(ok ? 0 : 1);
@@ -148,7 +150,14 @@ public partial class App : Application
         // schtasks.exe calls can take a few seconds; never surfaced to the
         // user since a failure here just means the next manual run needs to
         // be interactive, not silently broken.
-        _ = Task.Run(() => TaskSchedulerService.ResolveOrRecreateUpdaterTask());
+        // Moves both tasks out of the old \My Update Programs\ folder first
+        // (see TaskSchedulerService.MigrateLegacyTasks), so the check below
+        // finds the moved task instead of creating a second one.
+        _ = Task.Run(() =>
+        {
+            TaskSchedulerService.MigrateLegacyTasks();
+            TaskSchedulerService.ResolveOrRecreateUpdaterTask();
+        });
     }
 
     private void BuildTrayIcon()

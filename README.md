@@ -21,7 +21,9 @@ Download `HamProgramAutoUpdate-x.y.z-setup.exe` from
 
 The installer puts the app in `C:\Program Files\K5JSG\HamProgramAutoUpdate`, adds it to
 Add/Remove Programs, and offers to create a scheduled task so it starts with
-Windows.
+Windows. Its scheduled tasks live in Task Scheduler under
+`K5JSG\HamProgramAutoUpdate` (older versions used a `My Update Programs`
+folder; upgrading moves them automatically, keeping any schedule changes).
 
 There is also a standalone `HamProgramAutoUpdate.exe` on the release page if you
 would rather not install anything: copy it to any writable folder and run it.

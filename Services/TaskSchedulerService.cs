@@ -10,24 +10,35 @@ namespace HamProgramAutoUpdate.Services;
 /// Microsoft.Win32.TaskScheduler NuGet package so the app keeps zero external
 /// dependencies and stays a single self-contained exe.
 ///
-/// Two tasks matter here:
-///   "Updater Dashboard"      - starts this app at logon (created by us)
-///   "Program Update Scripts" - runs all the updater exes (created by you)
+/// Two tasks matter here, both under \K5JSG\HamProgramAutoUpdate\ (the same
+/// K5JSG\&lt;program&gt; layout K5JSG's other tools use):
+///   "Updater Dashboard"      - starts this app at logon
+///   "Program Update Scripts" - runs every program's updater
+/// Older versions kept them under \My Update Programs\ instead - see
+/// <see cref="MigrateLegacyTasks"/>.
 /// </summary>
 public static class TaskSchedulerService
 {
-    public const string FolderName = "My Update Programs";
+    private const string PublisherFolderName = "K5JSG";
+    public const string FolderName = PublisherFolderName + @"\HamProgramAutoUpdate";
+    private const string LegacyFolderName = "My Update Programs";
     public const string DashboardTaskName = "Updater Dashboard";
     public const string UpdaterTaskName = "Program Update Scripts";
 
     public static string DashboardTaskPath => $@"\{FolderName}\{DashboardTaskName}";
     public static string UpdaterTaskPath => $@"\{FolderName}\{UpdaterTaskName}";
 
-    /// <summary>Names tried when looking for the updater task, in order.</summary>
-    private static readonly string[] UpdaterTaskCandidates =
+    /// <summary>Where older versions put each task. The bare root-level
+    /// updater name dates from when that task was still hand-made.</summary>
+    private static readonly string[] LegacyDashboardTaskPaths =
     {
-        $@"\{FolderName}\{UpdaterTaskName}",
-        UpdaterTaskName,
+        $@"\{LegacyFolderName}\{DashboardTaskName}",
+    };
+
+    private static readonly string[] LegacyUpdaterTaskPaths =
+    {
+        $@"\{LegacyFolderName}\{UpdaterTaskName}",
+        $@"\{UpdaterTaskName}",
     };
 
     // ------------------------------------------------------------ schtasks
@@ -81,9 +92,114 @@ public static class TaskSchedulerService
     public static bool TaskExists(string taskPath)
         => RunSchtasks("/Query", "/TN", taskPath).code == 0;
 
-    /// <summary>Which updater-task name actually exists, or null.</summary>
+    /// <summary>The updater task's path if it exists, or null.</summary>
     public static string? ResolveUpdaterTask()
-        => UpdaterTaskCandidates.FirstOrDefault(TaskExists);
+        => TaskExists(UpdaterTaskPath) ? UpdaterTaskPath : null;
+
+    // ------------------------------------------------------ legacy layout
+
+    /// <summary>
+    /// One-time move of both tasks from the old \My Update Programs\ folder
+    /// (and the updater task's even older root-level spot) to
+    /// \K5JSG\HamProgramAutoUpdate\. Each old task is exported as XML and
+    /// re-registered at the new path, so anything changed on it in the Task
+    /// Scheduler UI (e.g. the nightly run time) carries over, then deleted.
+    /// Deleting a task doesn't stop an instance it already started (checked
+    /// live), so this is safe while the dashboard itself is running from
+    /// the old task. Then removes the old folder, but only if nothing else
+    /// is left in it. A no-op once a machine has migrated. Never throws.
+    /// </summary>
+    public static void MigrateLegacyTasks()
+    {
+        try
+        {
+            MigrateTask(LegacyDashboardTaskPaths, DashboardTaskPath);
+            MigrateTask(LegacyUpdaterTaskPaths, UpdaterTaskPath);
+            DeleteFolderIfEmpty(LegacyFolderName);
+        }
+        catch (Exception)
+        {
+            // Best-effort: the old tasks keep working until the next attempt.
+        }
+    }
+
+    private static void MigrateTask(string[] legacyPaths, string newPath)
+    {
+        foreach (var legacyPath in legacyPaths)
+        {
+            if (!TaskExists(legacyPath)) continue;
+
+            if (!TaskExists(newPath)) CopyTask(legacyPath, newPath);
+
+            // Only delete once the new one is confirmed there, so a failed
+            // copy never leaves the machine with no task at all.
+            if (TaskExists(newPath)) DeleteTask(legacyPath);
+        }
+    }
+
+    private static void CopyTask(string fromPath, string toPath)
+    {
+        var (code, xml, _) = RunSchtasks("/Query", "/TN", fromPath, "/XML");
+        if (code != 0 || string.IsNullOrWhiteSpace(xml)) return;
+
+        xml = System.Text.RegularExpressions.Regex.Replace(
+            xml, "<URI>.*?</URI>", $"<URI>{System.Security.SecurityElement.Escape(toPath)}</URI>");
+
+        var xmlPath = Path.Combine(AppPaths.TempDir,
+            $"HamProgramAutoUpdateMigrate_{Guid.NewGuid():N}.xml");
+        try
+        {
+            // schtasks /XML requires UTF-16, matching the XML declaration
+            File.WriteAllText(xmlPath, xml.Trim(), Encoding.Unicode);
+            RunSchtasks("/Create", "/TN", toPath, "/XML", xmlPath, "/F");
+        }
+        finally
+        {
+            try { if (File.Exists(xmlPath)) File.Delete(xmlPath); } catch { }
+        }
+    }
+
+    private static (bool ok, string? error) DeleteTask(string taskPath)
+    {
+        var (code, stdout, stderr) = RunSchtasks("/Delete", "/TN", taskPath, "/F");
+
+        // 1 is also returned when the task simply is not there, which is fine
+        if (code == 0) return (true, null);
+
+        var message = (stderr + stdout).Trim();
+        if (message.Contains("cannot find", StringComparison.OrdinalIgnoreCase))
+            return (true, null);
+
+        return (false, string.IsNullOrEmpty(message) ? $"schtasks returned {code}" : message);
+    }
+
+    /// <summary>schtasks can't delete folders, so this goes through the Task
+    /// Scheduler's COM API, late-bound (still no interop assembly or NuGet
+    /// dependency). Leaves the folder alone if it holds anything else, e.g.
+    /// a task the user made there themselves.</summary>
+    private static void DeleteFolderIfEmpty(string folderPath)
+    {
+        var serviceType = Type.GetTypeFromProgID("Schedule.Service");
+        if (serviceType is null) return;
+
+        dynamic service = Activator.CreateInstance(serviceType)!;
+        try
+        {
+            service.Connect();
+            dynamic folder;
+            try { folder = service.GetFolder($@"\{folderPath}"); }
+            catch (Exception) { return; } // already gone
+
+            const int TASK_ENUM_HIDDEN = 1;
+            if (folder.GetTasks(TASK_ENUM_HIDDEN).Count > 0 || folder.GetFolders(0).Count > 0) return;
+
+            service.GetFolder(@"\").DeleteFolder(folderPath, 0);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.FinalReleaseComObject(service);
+        }
+    }
 
     /// <summary>
     /// Same as <see cref="ResolveUpdaterTask"/>, but (re)creates the task
@@ -208,7 +324,7 @@ public static class TaskSchedulerService
 
     /// <summary>
     /// Create (or replace) the "Updater Dashboard" logon task, creating the
-    /// "My Update Programs" folder if it does not already exist.
+    /// \K5JSG\HamProgramAutoUpdate folder if it does not already exist.
     ///
     /// schtasks creates any missing folders in the task path automatically,
     /// so no separate folder step is needed.
@@ -251,18 +367,7 @@ public static class TaskSchedulerService
 
     /// <summary>Remove the logon task. Used by the uninstaller.</summary>
     public static (bool ok, string? error) RemoveDashboardTask()
-    {
-        var (code, stdout, stderr) = RunSchtasks("/Delete", "/TN", DashboardTaskPath, "/F");
-
-        // 1 is also returned when the task simply is not there, which is fine
-        if (code == 0) return (true, null);
-
-        var message = (stderr + stdout).Trim();
-        if (message.Contains("cannot find", StringComparison.OrdinalIgnoreCase))
-            return (true, null);
-
-        return (false, string.IsNullOrEmpty(message) ? $"schtasks returned {code}" : message);
-    }
+        => RemoveTask(DashboardTaskPath, LegacyDashboardTaskPaths);
 
     public static bool DashboardTaskInstalled() => TaskExists(DashboardTaskPath);
 
@@ -400,15 +505,28 @@ public static class TaskSchedulerService
 
     /// <summary>Remove the "Program Update Scripts" task. Used by the uninstaller.</summary>
     public static (bool ok, string? error) RemoveUpdaterTask()
+        => RemoveTask(UpdaterTaskPath, LegacyUpdaterTaskPaths);
+
+    /// <summary>Deletes the task plus any copy still at an old location
+    /// (never migrated), then the task's folders once they're empty, so an
+    /// uninstall leaves nothing behind in Task Scheduler. The K5JSG folder
+    /// itself stays while other K5JSG tools still have tasks in it.</summary>
+    private static (bool ok, string? error) RemoveTask(string taskPath, string[] legacyPaths)
     {
-        var (code, stdout, stderr) = RunSchtasks("/Delete", "/TN", UpdaterTaskPath, "/F");
+        var result = DeleteTask(taskPath);
+        foreach (var legacyPath in legacyPaths) DeleteTask(legacyPath);
 
-        if (code == 0) return (true, null);
+        try
+        {
+            DeleteFolderIfEmpty(FolderName);
+            DeleteFolderIfEmpty(PublisherFolderName);
+            DeleteFolderIfEmpty(LegacyFolderName);
+        }
+        catch (Exception)
+        {
+            // Best-effort: an empty folder left behind is harmless.
+        }
 
-        var message = (stderr + stdout).Trim();
-        if (message.Contains("cannot find", StringComparison.OrdinalIgnoreCase))
-            return (true, null);
-
-        return (false, string.IsNullOrEmpty(message) ? $"schtasks returned {code}" : message);
+        return result;
     }
 }

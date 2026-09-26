@@ -13,6 +13,7 @@ public static class UpdaterRegistry
             new ChirpUpdater(),
             new DXPeditionsUpdater(),
             new GridTrackerUpdater(),
+            new HamRadioVSPESwitcherUpdater(),
             new HrdUpdater(),
             new Log4omUpdater(),
             new N1mmUpdater(),

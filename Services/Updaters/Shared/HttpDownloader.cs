@@ -29,7 +29,9 @@ public static class HttpDownloader
 
     /// <summary>Downloads to <paramref name="destPath"/>, retrying on
     /// failure, and validates the result looks like a real Windows
-    /// installer (exe/msi/zip) rather than an error page.</summary>
+    /// installer (exe/msi/zip) rather than an error page.
+    /// <paramref name="configureRequest"/> lets a caller add headers (e.g.
+    /// auth for a private GitHub release asset) to each attempt's request.</summary>
     /// <remarks>
     /// <paramref name="perAttemptTimeout"/> exists because of a real,
     /// confirmed-live gap: HttpClient.Timeout does NOT reliably bound a
@@ -52,7 +54,8 @@ public static class HttpDownloader
         int attempts = 4,
         TimeSpan? delayBetweenAttempts = null,
         long minSizeBytes = 10_000,
-        TimeSpan? perAttemptTimeout = null)
+        TimeSpan? perAttemptTimeout = null,
+        Action<HttpRequestMessage>? configureRequest = null)
     {
         var delay = delayBetweenAttempts ?? TimeSpan.FromSeconds(10);
         var timeout = perAttemptTimeout ?? TimeSpan.FromMinutes(5);
@@ -65,7 +68,9 @@ public static class HttpDownloader
 
             try
             {
-                using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token))
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                configureRequest?.Invoke(request);
+                using (var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token))
                 {
                     response.EnsureSuccessStatusCode();
                     await using var source = await response.Content.ReadAsStreamAsync(attemptCts.Token);

@@ -429,4 +429,9 @@ internal sealed class GitHubAsset
 
     [JsonPropertyName("browser_download_url")]
     public string BrowserDownloadUrl { get; set; } = "";
+
+    /// <summary>The asset's API URL - the one that works for a private repo's
+    /// asset, requested with a token and Accept: application/octet-stream.</summary>
+    [JsonPropertyName("url")]
+    public string ApiUrl { get; set; } = "";
 }

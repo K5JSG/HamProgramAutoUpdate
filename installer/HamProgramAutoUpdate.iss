@@ -16,7 +16,8 @@
 #define MyAppURL "https://github.com/K5JSG/HamProgramAutoUpdate"
 #define MyAppExeName "HamProgramAutoUpdate.exe"
 ; Must match TaskSchedulerService.DashboardTaskPath exactly.
-#define DashboardTaskPath "\My Update Programs\Updater Dashboard"
+; Must match TaskSchedulerService.DashboardTaskPath exactly.
+#define DashboardTaskPath "\K5JSG\HamProgramAutoUpdate\Updater Dashboard"
 
 ; Overridable from the command line: iscc /DMyAppVersion=1.2.0 ...
 #ifndef MyAppVersion
@@ -132,7 +133,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 ; Create the "Updater Dashboard" scheduled task under the
-; "My Update Programs" folder. The app does this itself so the task XML
+; \K5JSG\HamProgramAutoUpdate folder, first moving both tasks out of the old
+; "My Update Programs" folder on upgrade. The app does this itself so the task XML
 ; lives with the code rather than being duplicated here.
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--install-task"; \
     StatusMsg: "Creating the startup scheduled task..."; \
