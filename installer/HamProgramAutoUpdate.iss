@@ -1,8 +1,7 @@
 ﻿; ===================================================================
 ;  Ham Program Auto Update - installer
 ;
-;  Build with Inno Setup 6 or newer (run from the repo root,
-;  src\HamProgramAutoUpdate\ - this script now lives inside the repo):
+;  Build with Inno Setup 6 or newer (run from the repo root):
 ;      iscc installer\HamProgramAutoUpdate.iss
 ;
 ;  Expects the published single-file exe at:
