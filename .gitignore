@@ -373,9 +373,6 @@ ClaudeArchive/
 .mcp.json
 CODE_REVIEW_PROGRESS.md
 
-# Local-only git config file (not uploaded to GitHub)
-.gitattributes
-
 #ChirpUpdateBinary
 ChirpUpdaterBinary/
 
