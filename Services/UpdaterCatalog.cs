@@ -39,6 +39,9 @@ public static class UpdaterCatalog
         new("bkttimesync", "BktTimeSync",
             @"BktTimeSync Updater\bkttimesync_updater.log"),
 
+        new("callsign_lookup", "Callsign Lookup",
+            @"Callsign Lookup Updater\callsign_lookup_updater.log"),
+
         new("chirp", "CHIRP",
             @"Chirp Update Script\chirp_updater.log"),
 

@@ -10,6 +10,7 @@ public static class UpdaterRegistry
         new IProgramUpdater[]
         {
             new BktTimeSyncUpdater(),
+            new CallsignLookupUpdater(),
             new ChirpUpdater(),
             new DXPeditionsUpdater(),
             new GridTrackerUpdater(),
