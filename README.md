@@ -66,6 +66,12 @@ downloads the installer, verifies it against the release's published
 `.sha256` checksum, and launches it. The installer stops the running app and
 upgrades in place. See `Services/SelfUpdateService.cs`.
 
+Upgrading (by self-update or by running a newer installer) keeps a single
+Installed Apps entry and your shortcuts. Along the way it removes any other
+installed copy of the app, and any file an older version installed that the
+new one no longer ships. Your settings, logs and update history live outside
+the program folder and are untouched.
+
 The header's elevation badge (**ADMIN** / **NOT ADMIN**) shows whether the
 dashboard itself is running elevated.
 
