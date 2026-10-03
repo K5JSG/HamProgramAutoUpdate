@@ -99,14 +99,19 @@ brings the card straight back with its full history intact rather than
 starting blank. A program the dashboard has never seen simply gets no card
 yet.
 
-Its own record of update dates is kept at:
+Its own data - the record of update dates, run markers and settings - is
+kept next to the logs:
 
 ```
-%LOCALAPPDATA%\HamProgramAutoUpdate\update_history.json
+%ProgramData%\HamProgramAutoUpdate\update_history.json
 ```
 
 That is outside the install folder on purpose, so it survives upgrades and
-reinstalls. Clearing a log never loses the update date.
+reinstalls, and it's shared by every Windows account on the PC and by the
+nightly update task. Clearing a log never loses the update date. Versions
+before 1.9.0 kept it per user in `%LOCALAPPDATA%\HamProgramAutoUpdate\`;
+the first start after upgrading moves it across automatically (the old
+files are left as a backup).
 
 ---
 
@@ -121,6 +126,12 @@ program it updates inherits that instead of prompting per program.
 Launched from its own scheduled task, Task Scheduler elevates it silently
 and there is no prompt at all - the normal path for both the daily
 auto-update run and the app starting at logon.
+
+The daily update run (the "Program Update Scripts" task) runs as the
+built-in SYSTEM account, so it happens at 3 AM whether or not anyone is
+signed in - for example, a PC left at the sign-in screen after a restart.
+If a PC was off or asleep at 3 AM, it catches up shortly after the next
+sign-in, and the dashboard double-checks a few minutes after it starts.
 
 ---
 

@@ -65,26 +65,34 @@ public sealed class InstallerWindowSuppressor : IDisposable
 
     private void PollOnce()
     {
-        var matches = new List<IntPtr>();
+        var clickMode = _buttonLabelSubstrings is { Length: > 0 };
+        var matches = new List<(IntPtr hWnd, bool visible)>();
         NativeMethods.EnumWindows((hWnd, _) =>
         {
-            if (!NativeMethods.IsWindowVisible(hWnd)) return true;
+            var visible = NativeMethods.IsWindowVisible(hWnd);
+            // Hide mode has nothing to do for a window that's already hidden.
+            // Click mode must still find it: run by the SYSTEM nightly task,
+            // a program starts hidden (Task Scheduler's SW_HIDE carries into
+            // its first dialog), so RTUpdater_V5's "All files are up to
+            // date. [OK]" sits invisible and waits forever (seen live
+            // 2026-10-03).
+            if (!visible && !clickMode) return true;
             var title = GetWindowText(hWnd);
             if (title.Length > 0 && _titleSubstrings.Any(s => title.Contains(s, StringComparison.OrdinalIgnoreCase)))
-                matches.Add(hWnd);
+                matches.Add((hWnd, visible));
             return true;
         }, IntPtr.Zero);
 
-        foreach (var hWnd in matches)
+        foreach (var (hWnd, visible) in matches)
         {
-            if (_buttonLabelSubstrings is { Length: > 0 } && TryClickChildButton(hWnd, _buttonLabelSubstrings))
+            if (clickMode && TryClickChildButton(hWnd, _buttonLabelSubstrings!, visible))
                 continue;
 
-            NativeMethods.ShowWindow(hWnd, NativeMethods.SW_HIDE);
+            if (visible) NativeMethods.ShowWindow(hWnd, NativeMethods.SW_HIDE);
         }
     }
 
-    private static bool TryClickChildButton(IntPtr parent, string[] labelSubstrings)
+    private static bool TryClickChildButton(IntPtr parent, string[] labelSubstrings, bool parentVisible)
     {
         var clicked = false;
         NativeMethods.EnumChildWindows(parent, (hWnd, _) =>
@@ -92,7 +100,20 @@ public sealed class InstallerWindowSuppressor : IDisposable
             var text = GetWindowText(hWnd);
             if (text.Length > 0 && labelSubstrings.Any(s => text.Contains(s, StringComparison.OrdinalIgnoreCase)))
             {
-                NativeMethods.PostMessage(hWnd, NativeMethods.BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+                if (parentVisible)
+                {
+                    NativeMethods.PostMessage(hWnd, NativeMethods.BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+                }
+                else
+                {
+                    // BM_CLICK fakes a mouse click, which a hidden, inactive
+                    // dialog can ignore. WM_COMMAND/BN_CLICKED to the dialog
+                    // is exactly what the button itself would send when
+                    // clicked, and works whether or not it's on screen.
+                    var id = NativeMethods.GetDlgCtrlID(hWnd);
+                    var wParam = (IntPtr)((NativeMethods.BN_CLICKED << 16) | (id & 0xFFFF));
+                    NativeMethods.PostMessage(parent, NativeMethods.WM_COMMAND, wParam, hWnd);
+                }
                 clicked = true;
                 return false; // stop enumerating this window's children
             }
@@ -114,6 +135,11 @@ public sealed class InstallerWindowSuppressor : IDisposable
     {
         public const int SW_HIDE = 0;
         public const uint BM_CLICK = 0x00F5;
+        public const uint WM_COMMAND = 0x0111;
+        public const int BN_CLICKED = 0;
+
+        [DllImport("user32.dll")]
+        public static extern int GetDlgCtrlID(IntPtr hWnd);
 
         public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 

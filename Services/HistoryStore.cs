@@ -27,9 +27,39 @@ public sealed class HistoryStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>The app's own data (update history, run markers, settings,
+    /// tokens), shared by every Windows account and by the nightly task,
+    /// which runs as SYSTEM. Next to the Logs folder. Outside the program
+    /// folder, so upgrades never touch it.</summary>
     public static string StateDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "HamProgramAutoUpdate");
+
+    /// <summary>Where versions before 1.9.0 kept the same files, per Windows
+    /// user - see StateMigration.</summary>
+    public static string LegacyStateDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "HamProgramAutoUpdate");
+
+    /// <summary>Folds another history file (a pre-1.9.0 per-user one) into
+    /// the shared one, keeping whichever side recorded each program more
+    /// recently. Never throws.</summary>
+    public static bool MergeFrom(string otherFilePath)
+    {
+        try
+        {
+            if (!File.Exists(otherFilePath)) return true;
+            var other = JsonSerializer.Deserialize<Dictionary<string, HistoryEntry>>(File.ReadAllText(otherFilePath));
+            if (other is null || other.Count == 0) return true;
+
+            var store = new HistoryStore { _entries = other };
+            return store.Save();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     public static string FilePath => Path.Combine(StateDir, "update_history.json");
 

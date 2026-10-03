@@ -18,6 +18,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Before anything reads the history/settings/tokens: move this
+        // user's pre-1.9.0 data into the shared folder the SYSTEM nightly
+        // task uses. A no-op once done. See StateMigration.
+        StateMigration.Run();
+
         // ---- command line, used by the installer and uninstaller ----------
         var args = e.Args;
         if (args.Length > 0)

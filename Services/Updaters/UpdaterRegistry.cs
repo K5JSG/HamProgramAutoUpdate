@@ -21,6 +21,7 @@ public static class UpdaterRegistry
             new NetLoggerUpdater(),
             new PotaUpdater(),
             new PotaOfflineMapsUpdater(),
+            new QslSubmissionsUpdater(),
             new RtSystemsUpdater(),
             new TqslUpdater(),
             new WsjtxUpdater(),

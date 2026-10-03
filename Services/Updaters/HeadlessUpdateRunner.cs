@@ -71,6 +71,25 @@ public static class HeadlessUpdateRunner
 
     private static string LastFullRunMarkerPath => Path.Combine(HistoryStore.StateDir, "last_full_run.txt");
 
+    /// <summary>When the last real (non-dry-run) full run started, or null if
+    /// there's no record of one. Never throws.</summary>
+    public static DateTime? LastFullRunUtc()
+    {
+        try
+        {
+            if (File.Exists(LastFullRunMarkerPath) &&
+                DateTime.TryParse(File.ReadAllText(LastFullRunMarkerPath), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind, out var last))
+            {
+                return last.ToUniversalTime();
+            }
+        }
+        catch (Exception)
+        {
+        }
+        return null;
+    }
+
     /// <summary>Returns false (meaning: skip this run) if a real run already
     /// completed within RecentFullRunWindow; otherwise claims the window for
     /// this run and returns true. Fails open (allows the run) on any I/O
@@ -89,13 +108,8 @@ public static class HeadlessUpdateRunner
                 try { acquired = mutex.WaitOne(TimeSpan.FromSeconds(5)); }
                 catch (AbandonedMutexException) { acquired = true; }
 
-                if (File.Exists(LastFullRunMarkerPath) &&
-                    DateTime.TryParse(File.ReadAllText(LastFullRunMarkerPath), CultureInfo.InvariantCulture,
-                        DateTimeStyles.RoundtripKind, out var last) &&
-                    DateTime.UtcNow - last < RecentFullRunWindow)
-                {
+                if (LastFullRunUtc() is { } last && DateTime.UtcNow - last < RecentFullRunWindow)
                     return false;
-                }
 
                 File.WriteAllText(LastFullRunMarkerPath, DateTime.UtcNow.ToString("o"));
                 return true;

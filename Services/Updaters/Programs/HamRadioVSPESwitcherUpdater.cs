@@ -184,87 +184,18 @@ public sealed class HamRadioVSPESwitcherUpdater : UpdaterBase
         }
     }
 
-    /// <summary>Per-PC, per-user file holding a fine-grained GitHub token
-    /// (read-only Contents access to just this repo). Never shipped or
-    /// committed - it's hand-created on each PC, the same idea as
-    /// PotaUpdaterConfig's GitHubToken.</summary>
-    private static string TokenFilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "HamProgramAutoUpdate", "vspe_switcher_config.json");
+    /// <summary>Per-PC file holding a fine-grained GitHub token (read-only
+    /// Contents access to the private repo(s)). Never shipped or committed -
+    /// it's hand-created on each PC. Also the fallback token for the QSL Card
+    /// Submissions card (see QslSubmissionsUpdater), so one token that covers
+    /// both repos needs only this one file. See PrivateGitHubRepo.</summary>
+    internal static string TokenFilePath => PrivateGitHubRepo.TokenFilePath("vspe_switcher_config.json");
 
-    /// <summary>The token from <see cref="TokenFilePath"/>, or null if the
-    /// file is missing/empty/unreadable. Accepts either the bare token or
-    /// {"GitHubToken": "..."}. A plaintext token is rewritten in place as
-    /// DPAPI-encrypted JSON on first read, so it's only readable by this
-    /// Windows user on this PC from then on.</summary>
-    private static string? LoadToken(UpdaterLog log)
-    {
-        try
-        {
-            if (!File.Exists(TokenFilePath)) return null;
+    private static string? LoadToken(UpdaterLog log) => PrivateGitHubRepo.LoadToken(TokenFilePath, log);
 
-            var text = File.ReadAllText(TokenFilePath).Trim();
-            if (text.Length == 0) return null;
+    private static void AddGitHubHeaders(HttpRequestMessage request, string token, string accept) =>
+        PrivateGitHubRepo.AddHeaders(request, token, accept);
 
-            var stored = text;
-            if (text.StartsWith('{'))
-            {
-                using var doc = JsonDocument.Parse(text);
-                stored = doc.RootElement.TryGetProperty("GitHubToken", out var value)
-                    ? value.GetString()?.Trim() ?? ""
-                    : "";
-                if (stored.Length == 0) return null;
-            }
-
-            if (DpapiProtector.IsProtected(stored))
-            {
-                try
-                {
-                    return DpapiProtector.Unprotect(stored);
-                }
-                catch (Exception)
-                {
-                    // Encrypted by a different Windows user or PC (e.g. the
-                    // file was copied over) - it can't be read here.
-                    log.Line($"The GitHub token in {TokenFilePath} was saved by a different Windows user or PC - replace it with the token itself.");
-                    return null;
-                }
-            }
-
-            try
-            {
-                var json = JsonSerializer.Serialize(new { GitHubToken = DpapiProtector.Protect(stored) });
-                File.WriteAllText(TokenFilePath, json);
-            }
-            catch (Exception)
-            {
-                // Best-effort: the token still works this run; encrypting
-                // it at rest is retried next time.
-            }
-            return stored;
-        }
-        catch (Exception ex)
-        {
-            log.Line($"Could not read {TokenFilePath} ({ex.Message}).");
-            return null;
-        }
-    }
-
-    private static void AddGitHubHeaders(HttpRequestMessage request, string token, string accept)
-    {
-        request.Headers.UserAgent.ParseAdd("HamProgramAutoUpdate");
-        request.Headers.Accept.ParseAdd(accept);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-    }
-
-    private static async Task<GitHubRelease?> FetchLatestReleaseAsync(HttpClient http, string token, CancellationToken ct)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repository}/releases/latest");
-        AddGitHubHeaders(request, token, "application/vnd.github+json");
-
-        using var response = await http.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
-        var json = await response.Content.ReadAsStringAsync(ct);
-        return JsonSerializer.Deserialize<GitHubRelease>(json);
-    }
+    private static Task<GitHubRelease?> FetchLatestReleaseAsync(HttpClient http, string token, CancellationToken ct) =>
+        PrivateGitHubRepo.FetchLatestReleaseAsync(http, Repository, token, ct);
 }

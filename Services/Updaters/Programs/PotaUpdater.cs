@@ -337,9 +337,7 @@ public sealed class PotaUpdaterConfig
     /// would be overwritten on the next update instead of preserved.</summary>
     public string[] PreserveGlobs { get; set; } = { "*.ini", "*.json", "*.db", "*.csv", "logs" };
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "HamProgramAutoUpdate", "pota_updater_config.json");
+    private static string FilePath => Path.Combine(HistoryStore.StateDir, "pota_updater_config.json");
 
     public static PotaUpdaterConfig Load()
     {
@@ -366,8 +364,9 @@ public sealed class PotaUpdaterConfig
     /// <summary>
     /// This file has no UI - a GitHubToken is hand-entered by editing the
     /// JSON directly, so it starts out as plaintext. The first Load() after
-    /// that encrypts it at rest with DPAPI (tied to this Windows user and
-    /// machine) and rewrites the file, then leaves the plaintext value in
+    /// that encrypts it at rest with DPAPI (tied to this machine, see
+    /// DpapiProtector) and rewrites the file - as does the first Load() of an
+    /// older user-scoped value - then leaves the plaintext value in
     /// memory either way, so callers (FetchLatestReleaseAsync) never need to
     /// know which form was actually on disk.
     /// </summary>
@@ -379,7 +378,9 @@ public sealed class PotaUpdaterConfig
         {
             try
             {
-                config.GitHubToken = DpapiProtector.Unprotect(config.GitHubToken);
+                var stored = config.GitHubToken;
+                config.GitHubToken = DpapiProtector.Unprotect(stored);
+                if (DpapiProtector.NeedsUpgrade(stored)) SaveProtected(config);
             }
             catch (Exception)
             {
@@ -395,11 +396,21 @@ public sealed class PotaUpdaterConfig
             return;
         }
 
+        SaveProtected(config);
+    }
+
+    /// <summary>Rewrites the file with the (plaintext, in memory) token
+    /// encrypted at rest, locked to Administrators and SYSTEM. Leaves the
+    /// in-memory token plaintext either way.</summary>
+    private static void SaveProtected(PotaUpdaterConfig config)
+    {
         var plaintext = config.GitHubToken;
+        if (string.IsNullOrEmpty(plaintext)) return;
         try
         {
             config.GitHubToken = DpapiProtector.Protect(plaintext);
             File.WriteAllText(FilePath, JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
+            SecureFile.RestrictToAdmins(FilePath);
         }
         catch (Exception)
         {

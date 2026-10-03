@@ -34,6 +34,16 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) => Refresh();
         Loaded += (_, _) => _ = CheckForUpdateAsync();
+
+        // One-shot: catch up on a missed nightly run (see MissedRunSafetyNet).
+        var safetyNetTimer = new DispatcherTimer { Interval = MissedRunSafetyNet.CheckDelay };
+        safetyNetTimer.Tick += async (_, _) =>
+        {
+            safetyNetTimer.Stop();
+            try { await Task.Run(MissedRunSafetyNet.CheckAndRun); }
+            catch (Exception) { }
+        };
+        safetyNetTimer.Start();
     }
 
     // ------------------------------------------------------------ updates

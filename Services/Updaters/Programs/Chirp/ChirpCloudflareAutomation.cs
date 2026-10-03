@@ -48,7 +48,10 @@ public static class ChirpCloudflareAutomation
             return new Result(false, null, null, "No Chrome or Edge install found to drive.");
         ctx.Log.Line($"Using browser: {chromePath}");
 
+        await DeleteStaleScratchProfilesAsync(ctx, workingDir, ct);
+
         var profileDir = Path.Combine(workingDir, "bg_profile");
+        var isScratchProfile = false;
         if (await IsProfileLockedByLiveChromeAsync(profileDir, ct))
         {
             // A previous run's Chrome can still be alive here well after a
@@ -62,12 +65,15 @@ public static class ChirpCloudflareAutomation
             // fresh scratch profile only in that rare case costs one
             // Cloudflare challenge's worth of cookie warmth, not correctness.
             ctx.Log.Line("A previous CHIRP run's browser still appears to be active - using a fresh scratch profile for this run instead of risking a collision.");
-            profileDir = Path.Combine(workingDir, $"bg_profile_{Guid.NewGuid():N}");
+            profileDir = Path.Combine(workingDir, $"{ScratchProfilePrefix}{Guid.NewGuid():N}");
+            isScratchProfile = true;
         }
         var downloadDir = Path.Combine(workingDir, "downloads");
         Directory.CreateDirectory(profileDir);
         Directory.CreateDirectory(downloadDir);
+        CleanDownloadDir(downloadDir, keep: null);
         SeedProfilePreferences(profileDir, downloadDir);
+        string? installerToKeep = null;
 
         // Unlike the profile dir, a hidden desktop object has no state worth
         // reusing across runs - making this unique per run costs nothing and
@@ -178,6 +184,7 @@ public static class ChirpCloudflareAutomation
             if (installerPath is null)
                 return new Result(false, build, null, "Could not download the installer.");
 
+            installerToKeep = installerPath;
             return new Result(true, build, installerPath, null);
         }
         finally
@@ -186,7 +193,87 @@ public static class ChirpCloudflareAutomation
             try { if (chrome is { HasExited: false }) chrome.Kill(entireProcessTree: true); } catch (Exception) { }
             chrome?.Dispose();
             HiddenDesktopAutomation.DestroyDesktop(hDesktop);
+            CleanDownloadDir(downloadDir, keep: installerToKeep);
+
+            // A scratch profile only existed to dodge an orphaned Chrome for
+            // this one run - it has no warmth worth keeping. If Chrome's
+            // child processes still hold files open this can fail; the next
+            // run's DeleteStaleScratchProfilesAsync sweep retries it.
+            if (isScratchProfile)
+                await TryDeleteDirectoryAsync(profileDir);
         }
+    }
+
+    private const string ScratchProfilePrefix = "bg_profile_";
+
+    /// <summary>Deletes everything in the downloads folder except
+    /// <paramref name="keep"/> (the installer this run is handing to
+    /// ChirpUpdater, which deletes it itself after installing). Needed
+    /// because Browser.setDownloadBehavior sends EVERY Chrome download here,
+    /// and Chrome still fetches some of its own components despite
+    /// --disable-component-update - observed as half-finished CRX packages
+    /// named "downloads.htm.crdownload" left behind when the run kills
+    /// Chrome. Best effort; a locked file is retried next run.</summary>
+    private static void CleanDownloadDir(string downloadDir, string? keep)
+    {
+        try
+        {
+            foreach (var file in Directory.GetFiles(downloadDir))
+            {
+                if (keep is not null && string.Equals(file, keep, StringComparison.OrdinalIgnoreCase)) continue;
+                try { File.Delete(file); } catch (Exception) { }
+            }
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    /// <summary>Deletes scratch profiles (see RunAsync) left behind by earlier
+    /// runs whose cleanup failed - e.g. the process was killed, or Chrome
+    /// still held files open. Skips any a live Chrome is still using.</summary>
+    private static async Task DeleteStaleScratchProfilesAsync(UpdaterContext ctx, string workingDir, CancellationToken ct)
+    {
+        try
+        {
+            if (!Directory.Exists(workingDir)) return;
+
+            foreach (var dir in Directory.GetDirectories(workingDir, ScratchProfilePrefix + "*"))
+            {
+                if (await IsProfileLockedByLiveChromeAsync(dir, ct)) continue;
+                if (await TryDeleteDirectoryAsync(dir))
+                    ctx.Log.Line($"Removed leftover scratch browser profile {Path.GetFileName(dir)}.");
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            ctx.Log.Line($"Could not clean up leftover scratch browser profiles: {ex.Message}");
+        }
+    }
+
+    /// <summary>Best-effort recursive delete, retrying briefly because a just-
+    /// killed Chrome's child processes can hold files open for a moment.
+    /// Returns whether the directory is gone.</summary>
+    private static async Task<bool> TryDeleteDirectoryAsync(string dir)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+                return true;
+            }
+            catch (Exception) when (attempt < 4)
+            {
+                await Task.Delay(1000);
+            }
+            catch (Exception)
+            {
+                // Left for the next run's sweep.
+            }
+        }
+        return false;
     }
 
     /// <summary>Polls until the build listing appears or <paramref name="timeout"/>

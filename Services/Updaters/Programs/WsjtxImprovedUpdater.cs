@@ -517,9 +517,7 @@ public sealed class WsjtxImprovedUpdater : UpdaterBase
 
     private readonly record struct InstalledMarker(Variant Variant, string Build);
 
-    private static string MarkerPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "HamProgramAutoUpdate", "wsjtx_improved_build.txt");
+    private static string MarkerPath => Path.Combine(HistoryStore.StateDir, "wsjtx_improved_build.txt");
 
     private static InstalledMarker? ReadInstalledBuildMarker()
     {

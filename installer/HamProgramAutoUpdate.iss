@@ -196,9 +196,10 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--remove-updates-task"; \
 //   - the program folder is emptied (all but the uninstaller and
 //     ChirpUpdaterBinary\), so no file that an older version shipped and this
 //     one dropped is left behind.
-// The update history ({localappdata}\HamProgramAutoUpdate) and logs
-// ({commonappdata}\HamProgramAutoUpdate) live outside the program folder and
-// are never touched.
+// The app's data - update history, settings and logs, all under
+// {commonappdata}\HamProgramAutoUpdate (versions before 1.9.0 kept the
+// history in {localappdata}\HamProgramAutoUpdate) - lives outside the
+// program folder and is never touched by an upgrade.
 
 const
   UninstallKeyRoot = 'Software\Microsoft\Windows\CurrentVersion\Uninstall';
@@ -490,22 +491,46 @@ begin
   Result := True;
 end;
 
-// The update history lives outside the install folder on purpose, so it
-// survives upgrades. Offer to remove it on uninstall rather than orphaning it.
+// Deletes the files directly in Dir (not its subfolders, e.g. Logs\).
+procedure DeleteFilesIn(const Dir: String);
+var
+  FindRec: TFindRec;
+begin
+  if FindFirst(Dir + '\*', FindRec) then
+  begin
+    try
+      repeat
+        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = 0 then
+          DeleteFile(Dir + '\' + FindRec.Name);
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+// The app's data lives outside the install folder on purpose, so it survives
+// upgrades. Offer to remove it on uninstall rather than orphaning it: the
+// shared data files (not the Logs\ folder), plus the per-user folder versions
+// before 1.9.0 used.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  HistoryDir: String;
+  DataDir, LegacyDir: String;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    HistoryDir := ExpandConstant('{localappdata}\HamProgramAutoUpdate');
-    if DirExists(HistoryDir) then
+    DataDir := ExpandConstant('{commonappdata}\HamProgramAutoUpdate');
+    LegacyDir := ExpandConstant('{localappdata}\HamProgramAutoUpdate');
+    if FileExists(DataDir + '\update_history.json') or DirExists(LegacyDir) then
     begin
-      if MsgBox('Also remove the record of when each program was last updated?' + #13#10 + #13#10 +
-                HistoryDir + #13#10 + #13#10 +
-                'Choose No to keep it, so the dates are still there if you reinstall.',
+      if MsgBox('Also remove the record of when each program was last updated, and the app''s settings?' + #13#10 + #13#10 +
+                DataDir + #13#10 + #13#10 +
+                'Choose No to keep them, so the dates are still there if you reinstall.',
                 mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-        DelTree(HistoryDir, True, True, True);
+      begin
+        DeleteFilesIn(DataDir);
+        if DirExists(LegacyDir) then DelTree(LegacyDir, True, True, True);
+      end;
     end;
   end;
 end;

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Builds the Ham Program Auto Update.
 
@@ -19,7 +19,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Version = "1.8.1",
+    [string]$Version = "1.9.0",
     [switch]$SkipInstaller
 )
 

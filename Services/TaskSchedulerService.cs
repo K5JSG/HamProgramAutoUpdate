@@ -379,6 +379,17 @@ public static class TaskSchedulerService
     /// in-process (see Services/Updaters), so one task/one action replaces
     /// what used to be a hand-maintained action per external updater exe.
     ///
+    /// Runs as SYSTEM (S-1-5-18), not the Administrators group the dashboard
+    /// task uses: a group principal with no stored password only runs while
+    /// an administrator is signed in, so a PC left at the sign-in screen
+    /// after a restart silently skipped its nightly runs (seen 2026-10-03).
+    /// SYSTEM runs whether or not anyone is signed in, without asking anyone
+    /// for a password. Everything the run needs is machine-wide for that
+    /// reason: the app's data lives in ProgramData (HistoryStore.StateDir,
+    /// moved there by StateMigration) and its tokens are machine-encrypted
+    /// (DpapiProtector). Proven live for CHIRP's hidden-desktop Chrome, the
+    /// part most likely to object, including a real install.
+    ///
     /// Two triggers: the daily CalendarTrigger, plus a LogonTrigger so a PC
     /// that was off (or asleep) through the 3am run still gets checked as
     /// soon as someone logs back on. StartWhenAvailable covers the case
@@ -428,7 +439,7 @@ public static class TaskSchedulerService
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <GroupId>S-1-5-32-544</GroupId>
+      <UserId>S-1-5-18</UserId>
       <RunLevel>HighestAvailable</RunLevel>
     </Principal>
   </Principals>
