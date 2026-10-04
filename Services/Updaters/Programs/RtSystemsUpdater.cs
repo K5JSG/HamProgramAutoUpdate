@@ -92,9 +92,17 @@ public sealed class RtSystemsUpdater : UpdaterBase
             return UpdateResult.UpToDate("Dry run");
         }
 
+        // RTUpdater_V5's dialogs ("All files are up to date. [OK]") still pop
+        // up despite /silent, flashing on the user's screen for a moment on
+        // every daytime run. Run it on a hidden desktop, like CHIRP's Chrome,
+        // and click them there. Unique per run, same reasoning as CHIRP's.
+        var desktopName = $"rt_bg_desktop_{Environment.ProcessId}_{Guid.NewGuid():N}";
+        var hDesktop = HiddenDesktopAutomation.CreateHiddenDesktop(desktopName);
         using var suppressor = new InstallerWindowSuppressor(
             new[] { "Installed Programmers", "RT Updater", "RTUpdater" },
-            buttonLabelSubstrings: new[] { "OK", "Update" });
+            buttonLabelSubstrings: new[] { "OK" },
+            visibleOnlyButtonLabelSubstrings: new[] { "Update" },
+            desktop: hDesktop);
         suppressor.Start();
 
         var updatedCount = 0;
@@ -110,18 +118,9 @@ public sealed class RtSystemsUpdater : UpdaterBase
 
                 try
                 {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = updaterPath,
-                        WorkingDirectory = folder,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                    };
-                    psi.ArgumentList.Add("/silent");
-
-                    using var proc = Process.Start(psi);
-                    if (proc is not null)
-                        await proc.WaitForExitAsync(ctx.CancellationToken);
+                    // Working directory is the exe's own folder (the module's).
+                    using var proc = HiddenDesktopAutomation.StartOnDesktop(updaterPath, "/silent", desktopName);
+                    await proc.WaitForExitAsync(ctx.CancellationToken);
 
                     var updated = WasUpdatedPerLog(folder) ?? DirectoryMaxWriteTime(folder) > beforeMtime;
                     if (updated)
@@ -144,6 +143,8 @@ public sealed class RtSystemsUpdater : UpdaterBase
         finally
         {
             suppressor.Stop();
+            CloseLeftovers(ctx, hDesktop);
+            HiddenDesktopAutomation.DestroyDesktop(hDesktop);
         }
 
         if (failedCount > 0 && updatedCount == 0)
@@ -160,6 +161,30 @@ public sealed class RtSystemsUpdater : UpdaterBase
         return updatedCount > 0
             ? UpdateResult.Updated(null, $"{updatedCount} module(s) updated, {failedCount} failed")
             : UpdateResult.UpToDate($"{failedCount} failed");
+    }
+
+    /// <summary>Nobody can see or close a window on the hidden desktop, so
+    /// anything still there once every module is done (e.g. the UpdateLog.Txt
+    /// viewer RTUpdater opens after its "An error must have occured" message)
+    /// would linger invisibly. Everything on that desktop was started by an
+    /// RTUpdater run, so close it all.</summary>
+    private static void CloseLeftovers(UpdaterContext ctx, IntPtr hDesktop)
+    {
+        try
+        {
+            foreach (var pid in HiddenDesktopAutomation.WindowOwnerProcessIds(hDesktop))
+            {
+                if (pid == Environment.ProcessId) continue;
+                try
+                {
+                    using var p = Process.GetProcessById(pid);
+                    ctx.Log.Line($"Closing leftover {p.ProcessName} on the hidden desktop.");
+                    p.Kill(entireProcessTree: true);
+                }
+                catch (Exception) { }
+            }
+        }
+        catch (Exception) { }
     }
 
     /// <summary>Excludes UpdateLog.Txt - see WasUpdatedPerLog for why: RTUpdater_V5.exe

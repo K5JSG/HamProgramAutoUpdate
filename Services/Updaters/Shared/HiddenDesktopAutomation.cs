@@ -2,11 +2,13 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace HamProgramAutoUpdate.Services.Updaters.Programs.Chirp;
+namespace HamProgramAutoUpdate.Services.Updaters.Shared;
 
 /// <summary>
-/// Win32 plumbing for running Chrome on a non-input ("hidden") desktop and
-/// clicking into it without ever touching the real mouse - a line-for-line
+/// Win32 plumbing for running a program on a non-input ("hidden") desktop and
+/// clicking into it without ever touching the real mouse. Used by CHIRP
+/// (Chrome) and RT Systems (RTUpdater_V5.exe, whose dialogs otherwise flash
+/// up on the user's screen). The CHIRP half is a line-for-line
 /// port of the same technique Chirp Update Script.py used successfully
 /// (CreateDesktopW + PostMessageW to a RenderWidget HWND; see that file's
 /// history in ChirpUpdaterSource\ for the full story of what was tried and
@@ -79,6 +81,9 @@ public static class HiddenDesktopAutomation
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumDesktopWindows(IntPtr hDesktop, EnumWindowsProc lpfn, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     [DllImport("user32.dll")]
     private static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
@@ -165,6 +170,19 @@ public static class HiddenDesktopAutomation
             return true;
         }, IntPtr.Zero);
         return found;
+    }
+
+    /// <summary>Process IDs owning any top-level window on the given desktop.</summary>
+    public static HashSet<int> WindowOwnerProcessIds(IntPtr hDesktop)
+    {
+        var pids = new HashSet<int>();
+        EnumDesktopWindows(hDesktop, (hWnd, _) =>
+        {
+            GetWindowThreadProcessId(hWnd, out var pid);
+            if (pid != 0) pids.Add((int)pid);
+            return true;
+        }, IntPtr.Zero);
+        return pids;
     }
 
     /// <summary>Every RenderWidget child of the given top-level Chrome window,

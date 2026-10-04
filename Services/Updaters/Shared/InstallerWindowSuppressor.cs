@@ -15,6 +15,8 @@ public sealed class InstallerWindowSuppressor : IDisposable
 {
     private readonly string[] _titleSubstrings;
     private readonly string[]? _buttonLabelSubstrings;
+    private readonly string[] _visibleOnlyButtonLabelSubstrings;
+    private readonly IntPtr _desktop;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
@@ -22,11 +24,24 @@ public sealed class InstallerWindowSuppressor : IDisposable
     /// these (case-insensitive) are handled.</param>
     /// <param name="buttonLabelSubstrings">When set, look for a child button
     /// whose label contains one of these and click it (BM_CLICK) instead of
-    /// just hiding the window - RT Systems' "OK"/"Update" dialogs need this.</param>
-    public InstallerWindowSuppressor(string[] titleSubstrings, string[]? buttonLabelSubstrings = null)
+    /// just hiding the window - RT Systems' "OK" dialogs need this.</param>
+    /// <param name="visibleOnlyButtonLabelSubstrings">Like
+    /// <paramref name="buttonLabelSubstrings"/>, but only clicked while the
+    /// window is on screen. For a button that also sits on a window the
+    /// program keeps hidden on purpose: RTUpdater_V5 /silent creates its main
+    /// "RT Updater V5" dialog hidden, with a real "Update" button on it, and
+    /// clicking that while there's nothing to update makes it show "An error
+    /// must have occured" and open its UpdateLog.Txt (seen live 2026-10-03).</param>
+    /// <param name="desktop">A hidden desktop (see HiddenDesktopAutomation) to
+    /// watch instead of the caller's own. Plain EnumWindows only sees the
+    /// calling thread's desktop.</param>
+    public InstallerWindowSuppressor(string[] titleSubstrings, string[]? buttonLabelSubstrings = null,
+        string[]? visibleOnlyButtonLabelSubstrings = null, IntPtr desktop = default)
     {
         _titleSubstrings = titleSubstrings;
         _buttonLabelSubstrings = buttonLabelSubstrings;
+        _visibleOnlyButtonLabelSubstrings = visibleOnlyButtonLabelSubstrings ?? Array.Empty<string>();
+        _desktop = desktop;
     }
 
     public void Start()
@@ -67,7 +82,7 @@ public sealed class InstallerWindowSuppressor : IDisposable
     {
         var clickMode = _buttonLabelSubstrings is { Length: > 0 };
         var matches = new List<(IntPtr hWnd, bool visible)>();
-        NativeMethods.EnumWindows((hWnd, _) =>
+        NativeMethods.EnumWindowsProc visit = (hWnd, _) =>
         {
             var visible = NativeMethods.IsWindowVisible(hWnd);
             // Hide mode has nothing to do for a window that's already hidden.
@@ -81,26 +96,37 @@ public sealed class InstallerWindowSuppressor : IDisposable
             if (title.Length > 0 && _titleSubstrings.Any(s => title.Contains(s, StringComparison.OrdinalIgnoreCase)))
                 matches.Add((hWnd, visible));
             return true;
-        }, IntPtr.Zero);
+        };
+        if (_desktop != IntPtr.Zero) NativeMethods.EnumDesktopWindows(_desktop, visit, IntPtr.Zero);
+        else NativeMethods.EnumWindows(visit, IntPtr.Zero);
 
         foreach (var (hWnd, visible) in matches)
         {
-            if (clickMode && TryClickChildButton(hWnd, _buttonLabelSubstrings!, visible))
-                continue;
+            if (clickMode)
+            {
+                var labels = visible ? _buttonLabelSubstrings!.Concat(_visibleOnlyButtonLabelSubstrings).ToArray() : _buttonLabelSubstrings!;
+                // BM_CLICK fakes a mouse click, which nothing on a non-input
+                // desktop reliably acts on - use the WM_COMMAND route there.
+                if (TryClickChildButton(hWnd, labels, simulateMouse: visible && _desktop == IntPtr.Zero))
+                    continue;
+            }
 
             if (visible) NativeMethods.ShowWindow(hWnd, NativeMethods.SW_HIDE);
         }
     }
 
-    private static bool TryClickChildButton(IntPtr parent, string[] labelSubstrings, bool parentVisible)
+    private static bool TryClickChildButton(IntPtr parent, string[] labelSubstrings, bool simulateMouse)
     {
         var clicked = false;
         NativeMethods.EnumChildWindows(parent, (hWnd, _) =>
         {
+            // Buttons only: a static label like "Update not needed" matches
+            // the same substrings, and its ID posted as a click is meaningless.
+            if (!string.Equals(GetClassName(hWnd), "Button", StringComparison.OrdinalIgnoreCase)) return true;
             var text = GetWindowText(hWnd);
             if (text.Length > 0 && labelSubstrings.Any(s => text.Contains(s, StringComparison.OrdinalIgnoreCase)))
             {
-                if (parentVisible)
+                if (simulateMouse)
                 {
                     NativeMethods.PostMessage(hWnd, NativeMethods.BM_CLICK, IntPtr.Zero, IntPtr.Zero);
                 }
@@ -131,6 +157,13 @@ public sealed class InstallerWindowSuppressor : IDisposable
         return sb.ToString();
     }
 
+    private static string GetClassName(IntPtr hWnd)
+    {
+        var sb = new StringBuilder(256);
+        NativeMethods.GetClassName(hWnd, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
     private static class NativeMethods
     {
         public const int SW_HIDE = 0;
@@ -147,6 +180,9 @@ public sealed class InstallerWindowSuppressor : IDisposable
         public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
         [DllImport("user32.dll")]
+        public static extern bool EnumDesktopWindows(IntPtr hDesktop, EnumWindowsProc lpfn, IntPtr lParam);
+
+        [DllImport("user32.dll")]
         public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
         [DllImport("user32.dll")]
@@ -160,6 +196,9 @@ public sealed class InstallerWindowSuppressor : IDisposable
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
         [DllImport("user32.dll")]
         public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
