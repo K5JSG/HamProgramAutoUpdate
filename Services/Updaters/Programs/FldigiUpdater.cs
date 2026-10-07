@@ -28,6 +28,10 @@ namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 /// in SYSTEM's own profile and the old uninstaller can't reach the user's
 /// old ones. <see cref="MoveStartMenuShortcuts"/> fixes that up afterward in
 /// every profile, so the user's Start menu keeps working shortcuts.
+///
+/// The installers also always put shortcuts on the desktop. Those are
+/// removed again unless that desktop already had one for the same program
+/// (<see cref="FixDesktopShortcuts"/>) - an update must not add icons.
 /// </summary>
 public sealed class FldigiUpdater : UpdaterBase
 {
@@ -232,6 +236,9 @@ public sealed class FldigiUpdater : UpdaterBase
             if (folderRegex.Match(currentFolder) is { Success: true } fm && parent is not null)
                 args.Add($"/D={Path.Combine(parent, $"{fm.Groups["prefix"].Value}-{latest}")}");
 
+            var copiesBefore = FindInstalled(c);
+            var desktopsBefore = SnapshotDesktops(copiesBefore.Select(i => i.InstallDir).ToList());
+
             ctx.Log.Line($"{c.Name}: installing {latest} silently...");
             var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
                 downloadPath, args, ctx.CancellationToken, timeout: TimeSpan.FromSeconds(300));
@@ -257,6 +264,7 @@ public sealed class FldigiUpdater : UpdaterBase
                 MoveStartMenuShortcuts(ctx, c, old.InstallDir, fresh.InstallDir);
             }
             RemoveSystemProfileShortcuts(c, fresh.InstallDir);
+            FixDesktopShortcuts(ctx, c, desktopsBefore, copiesBefore, fresh.InstallDir, latest);
 
             ctx.Log.Line($"{c.Name}: Updated to {latest}.");
             return (ComponentOutcome.Updated, latest);
@@ -336,11 +344,10 @@ public sealed class FldigiUpdater : UpdaterBase
         }
     }
 
-    /// <summary>Every Start menu "Programs" folder a shortcut could be in:
-    /// each user profile's (including SYSTEM's) plus the all-users one.</summary>
-    private static IEnumerable<string> StartMenuProgramDirs()
+    /// <summary>Every user profile folder on this PC, SYSTEM's included.</summary>
+    private static IEnumerable<string> ProfileDirs()
     {
-        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dirs = new List<string>();
         try
         {
             using var profiles = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList");
@@ -348,20 +355,161 @@ public sealed class FldigiUpdater : UpdaterBase
             {
                 using var p = profiles!.OpenSubKey(sid);
                 if (p?.GetValue("ProfileImagePath") is string path && !string.IsNullOrWhiteSpace(path))
-                {
-                    dirs.Add(Path.Combine(Environment.ExpandEnvironmentVariables(path),
-                        @"AppData\Roaming\Microsoft\Windows\Start Menu\Programs"));
-                }
+                    dirs.Add(Environment.ExpandEnvironmentVariables(path));
             }
         }
         catch (Exception)
         {
-            // Fall back to just this process's own and the all-users folder.
+            // Callers add this process's own folders as a fallback.
         }
+        return dirs;
+    }
+
+    /// <summary>Every Start menu "Programs" folder a shortcut could be in:
+    /// each user profile's (including SYSTEM's) plus the all-users one.</summary>
+    private static IEnumerable<string> StartMenuProgramDirs()
+    {
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var profile in ProfileDirs())
+            dirs.Add(Path.Combine(profile, @"AppData\Roaming\Microsoft\Windows\Start Menu\Programs"));
 
         dirs.Add(Environment.GetFolderPath(Environment.SpecialFolder.Programs));
         dirs.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms));
         return dirs.Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d));
+    }
+
+    /// <summary>Every desktop folder a shortcut could be on: each profile's
+    /// own (and its OneDrive-redirected one) plus the Public desktop.</summary>
+    private static IEnumerable<string> DesktopDirs()
+    {
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var profile in ProfileDirs())
+        {
+            dirs.Add(Path.Combine(profile, "Desktop"));
+            dirs.Add(Path.Combine(profile, "OneDrive", "Desktop"));
+        }
+
+        dirs.Add(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+        dirs.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory));
+        return dirs.Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d));
+    }
+
+    /// <summary>What was on each desktop before installing: every shortcut's
+    /// file name, and which of this program's exes it already had a shortcut
+    /// to (by exe file name, since the folder changes every version).</summary>
+    private sealed record DesktopSnapshot(HashSet<string> Names, HashSet<string> ProgramExes);
+
+    private static Dictionary<string, DesktopSnapshot> SnapshotDesktops(IReadOnlyList<string> installDirs)
+    {
+        var result = new Dictionary<string, DesktopSnapshot>(StringComparer.OrdinalIgnoreCase);
+        foreach (var desktop in DesktopDirs())
+        {
+            try
+            {
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var exes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var lnk in Directory.EnumerateFiles(desktop, "*.lnk"))
+                {
+                    names.Add(Path.GetFileName(lnk));
+                    var target = ReadShortcutTarget(lnk);
+                    if (target is not null && installDirs.Any(d => IsUnder(target, d)))
+                        exes.Add(Path.GetFileName(target));
+                }
+                result[desktop] = new DesktopSnapshot(names, exes);
+            }
+            catch (Exception)
+            {
+                // A desktop we can't read is one we won't touch afterward.
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// The installer always adds desktop shortcuts ("Fldigi 4.2.13", "Flarq
+    /// 4.3.9") to whichever desktop it runs on - the user's for a dashboard
+    /// run, SYSTEM's for the nightly one. Only keep one where that desktop
+    /// already had a shortcut to the same program; otherwise remove it, so
+    /// an update never adds icons the user didn't have. Old-version
+    /// shortcuts the old uninstaller couldn't reach (another profile's
+    /// desktop, on the nightly run) are pointed at the new folder instead.
+    /// </summary>
+    private static void FixDesktopShortcuts(UpdaterContext ctx, Component c,
+        Dictionary<string, DesktopSnapshot> before, IReadOnlyList<InstalledCopy> oldCopies,
+        string newDir, string newVersion)
+    {
+        var newDirTrimmed = newDir.TrimEnd('\\');
+
+        foreach (var desktop in DesktopDirs())
+        {
+            if (!before.TryGetValue(desktop, out var snapshot)) continue;
+
+            try
+            {
+                foreach (var lnk in Directory.EnumerateFiles(desktop, "*.lnk").ToList())
+                {
+                    var target = ReadShortcutTarget(lnk);
+                    if (target is null) continue;
+                    var name = Path.GetFileName(lnk);
+
+                    if (!snapshot.Names.Contains(name) && IsUnder(target, newDirTrimmed))
+                    {
+                        if (snapshot.ProgramExes.Contains(Path.GetFileName(target))) continue;
+                        File.Delete(lnk);
+                        ctx.Log.Line($"{c.Name}: removed the desktop shortcut the installer added ({name}).");
+                        continue;
+                    }
+
+                    var old = oldCopies.FirstOrDefault(o =>
+                        !string.Equals(o.InstallDir.TrimEnd('\\'), newDirTrimmed, StringComparison.OrdinalIgnoreCase) && IsUnder(target, o.InstallDir));
+                    if (old is null) continue;
+
+                    RetargetShortcut(lnk, old.InstallDir.TrimEnd('\\'), newDirTrimmed);
+                    var renamed = Path.Combine(desktop, name.Replace(old.Version, newVersion, StringComparison.OrdinalIgnoreCase));
+                    if (!string.Equals(renamed, lnk, StringComparison.OrdinalIgnoreCase) && !File.Exists(renamed))
+                        File.Move(lnk, renamed);
+                    ctx.Log.Line($"{c.Name}: pointed the desktop shortcut {name} at {newVersion}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ctx.Log.Line($"{c.Name}: could not tidy the desktop shortcuts in {desktop} ({ex.Message}).");
+            }
+        }
+    }
+
+    private static bool IsUnder(string path, string dir) =>
+        path.StartsWith(dir.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ReadShortcutTarget(string lnkPath)
+    {
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null) return null;
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            try
+            {
+                dynamic link = shell.CreateShortcut(lnkPath);
+                try
+                {
+                    string target = link.TargetPath;
+                    return string.IsNullOrWhiteSpace(target) ? null : target;
+                }
+                finally
+                {
+                    Marshal.FinalReleaseComObject(link);
+                }
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(shell);
+            }
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>

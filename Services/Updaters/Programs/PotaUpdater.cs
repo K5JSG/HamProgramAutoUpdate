@@ -163,7 +163,12 @@ public sealed class PotaUpdater : UpdaterBase
             else
             {
                 ctx.Log.Line($"Running installer with args '{config.InstallerArgs}'...");
-                var args = config.InstallerArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var args = config.InstallerArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+                // Leave the desktop shortcut alone - see CallsignLookupUpdater
+                // (rewriting it moves the icon). Added here rather than to the
+                // InstallerArgs default, which existing config files override.
+                if (!args.Any(a => a.StartsWith("/MERGETASKS", StringComparison.OrdinalIgnoreCase)))
+                    args.Add("/MERGETASKS=!desktopicon");
                 var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
                     downloadPath, args, ctx.CancellationToken, timeout: TimeSpan.FromSeconds(300));
                 if (!installOk)

@@ -228,7 +228,9 @@ public sealed class Js8CallUpdater : UpdaterBase
             ctx.Log.Line("Installing silently...");
             var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
                 downloadPath,
-                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" },
+                // !desktopicon: leave the desktop shortcut alone - see
+                // CallsignLookupUpdater (rewriting it moves the icon).
+                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/MERGETASKS=!desktopicon" },
                 ctx.CancellationToken,
                 timeout: TimeSpan.FromSeconds(300));
             if (!installOk)

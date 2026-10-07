@@ -143,7 +143,9 @@ public sealed class QslSubmissionsUpdater : UpdaterBase
             // Runtime the installer downloads and installs it first.
             var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
                 downloadPath,
-                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" },
+                // !desktopicon: leave the desktop shortcut alone - see
+                // CallsignLookupUpdater (rewriting it moves the icon).
+                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MERGETASKS=!desktopicon" },
                 ctx.CancellationToken,
                 timeout: TimeSpan.FromMinutes(10));
             if (!installOk)

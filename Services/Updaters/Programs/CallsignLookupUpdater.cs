@@ -126,10 +126,15 @@ public sealed class CallsignLookupUpdater : UpdaterBase
                 return UpdateResult.Failed(downloadError ?? "Download failed");
             }
 
+            // !desktopicon: leave the desktop shortcut alone. The installer
+            // otherwise rewrites it on every upgrade and Explorer moves the
+            // icon to the next free spot (seen live, even with the desktop
+            // icon listed first in [Icons]). An existing shortcut still points
+            // at the same exe, and none is added where there wasn't one.
             ctx.Log.Line("Installing silently...");
             var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
                 downloadPath,
-                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" },
+                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MERGETASKS=!desktopicon" },
                 ctx.CancellationToken,
                 timeout: TimeSpan.FromSeconds(300));
             if (!installOk)

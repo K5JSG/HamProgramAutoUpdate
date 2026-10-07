@@ -127,7 +127,9 @@ public sealed class DXPeditionsUpdater : UpdaterBase
             ctx.Log.Line("Installing silently...");
             var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
                 downloadPath,
-                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" },
+                // !desktopicon: leave the desktop shortcut alone - see
+                // CallsignLookupUpdater (rewriting it moves the icon).
+                new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MERGETASKS=!desktopicon" },
                 ctx.CancellationToken,
                 timeout: TimeSpan.FromSeconds(300));
             if (!installOk)
