@@ -48,6 +48,9 @@ public static class UpdaterCatalog
         new("dxpeditions", "DXPeditions Tracker",
             @"DXPeditions Updater\dxpeditions_updater.log"),
 
+        new("fldigi", "fldigi",
+            @"fldigi Updater\fldigi_updater.log"),
+
         new("gridtracker", "GridTracker",
             @"Gridtracker Update Script\gridtracker_updater.log"),
 
@@ -56,6 +59,9 @@ public static class UpdaterCatalog
 
         new("hrd", "Ham Radio Deluxe",
             @"HRD Update Script\HRD_Update_Script.log"),
+
+        new("js8call", "JS8Call",
+            @"JS8Call Updater\js8call_updater.log"),
 
         new("log4om", "Log4OM",
             @"Log4OM Update Script\log4om_updater.log"),

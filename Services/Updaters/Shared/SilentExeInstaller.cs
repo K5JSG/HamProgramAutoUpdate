@@ -98,8 +98,12 @@ public static class SilentExeInstaller
         // doc comment on this). ArgumentList quotes any token containing a
         // space, which a /D= whose directory has one (e.g. the default
         // "C:\Program Files\WSJT-X") would trip - build the command line by
-        // hand in that case so only the trailing /D= token stays raw.
-        if (args.Count > 0 && args[^1].StartsWith("/D=", StringComparison.Ordinal))
+        // hand in that case so only the trailing /D= token stays raw. An
+        // NSIS uninstaller's _?=<dir> (run in place and wait, see
+        // FldigiUpdater) has the exact same last-and-unquoted rule.
+        if (args.Count > 0 &&
+            (args[^1].StartsWith("/D=", StringComparison.Ordinal) ||
+             args[^1].StartsWith("_?=", StringComparison.Ordinal)))
         {
             var quotedHead = args.Take(args.Count - 1).Select(QuoteIfNeeded);
             psi.Arguments = string.Join(' ', quotedHead.Append(args[^1]));
