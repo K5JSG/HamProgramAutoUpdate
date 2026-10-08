@@ -72,7 +72,9 @@ public static class UpdaterCatalog
         new("netlogger", "NetLogger",
             @"Netlogger Update Script\netlogger_updater.log"),
 
-        new("pota", "POTA Activator",
+        // Log path kept from before the program's rename (POTA Activator
+        // Park Activations -> POTA Activation Tool) so run history carries on.
+        new("pota", "POTA Activation Tool",
             @"POTA Activator Parks Activations Updater\POTA_Activator_Parks_Activation.log"),
 
         new("pota_offline_maps", "POTA Offline Maps",

@@ -20,7 +20,7 @@ namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 /// </summary>
 public sealed class PotaUpdater : UpdaterBase
 {
-    public PotaUpdater() : base("pota", "POTA Activator", DetectPota)
+    public PotaUpdater() : base("pota", "POTA Activation Tool", DetectPota)
     {
     }
 
@@ -28,7 +28,16 @@ public sealed class PotaUpdater : UpdaterBase
     {
         var config = PotaUpdaterConfig.Load();
 
-        var entry = RegistryUninstallLookup.FindByDisplayNameSubstring(config.ProductName);
+        // The current name first, then the name from before the rename: a PC
+        // still on an older version shows the old name in Installed apps
+        // until this updater installs the renamed version over it.
+        var productName = config.ProductName;
+        var entry = RegistryUninstallLookup.FindByDisplayNameSubstring(productName);
+        if (entry is null)
+        {
+            productName = PotaUpdaterConfig.OldProductName;
+            entry = RegistryUninstallLookup.FindByDisplayNameSubstring(productName);
+        }
         if (entry is null) return DetectedTarget.NotFound;
 
         var installDir = entry.InstallLocation;
@@ -39,7 +48,7 @@ public sealed class PotaUpdater : UpdaterBase
             // fall back to its default target dir:
             // [ProgramFiles64Folder][Manufacturer]\[ProductName].
             var candidate = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "K5JSG", config.ProductName);
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "K5JSG", productName);
             if (Directory.Exists(candidate)) installDir = candidate;
         }
 
@@ -54,8 +63,8 @@ public sealed class PotaUpdater : UpdaterBase
         // console rather than being silently dropped, same fallback channel
         // UpdaterLog.BeginRun itself uses when it has no log to write to yet.
         var exe = installDir is { } loc
-            ? ExeFinder.FindByProductName(loc, config.ProductName,
-                onAmbiguous: msg => Console.WriteLine($"POTA Activator detection: {msg}"))
+            ? ExeFinder.FindByProductName(loc, productName,
+                onAmbiguous: msg => Console.WriteLine($"POTA Activation Tool detection: {msg}"))
             : null;
         var version = exe is not null ? FileVersionHelper.ReadFileVersion(exe) : entry.DisplayVersion;
         return DetectedTarget.Found(exe ?? installDir, version);
@@ -320,8 +329,15 @@ public sealed class PotaUpdater : UpdaterBase
 /// mirrors the original Python script's config.json shape.</summary>
 public sealed class PotaUpdaterConfig
 {
-    public string Repository { get; set; } = "K5JSG/POTA-Activator-Park-Activations";
-    public string ProductName { get; set; } = "POTA Activator Park Activations";
+    public string Repository { get; set; } = "K5JSG/POTA-Activation-Tool";
+    public string ProductName { get; set; } = "POTA Activation Tool";
+
+    // The program was "POTA Activator Park Activations" (repo
+    // K5JSG/POTA-Activator-Park-Activations) until the 1.15.0 rename. A
+    // config file saved with those values is moved to the new ones on Load,
+    // and detection still recognises an install under the old name.
+    public const string OldProductName = "POTA Activator Park Activations";
+    private const string OldRepository = "K5JSG/POTA-Activator-Park-Activations";
     public string AssetPattern { get; set; } = @".*\.(msi|exe|zip)$";
     // The setup exe is built with Inno Setup, not NSIS - "/S" (NSIS's silent
     // flag) is meaningless to Inno, so the installer showed its full GUI and
@@ -353,6 +369,10 @@ public sealed class PotaUpdaterConfig
                 var loaded = JsonSerializer.Deserialize<PotaUpdaterConfig>(File.ReadAllText(FilePath));
                 if (loaded is not null)
                 {
+                    if (string.Equals(loaded.Repository, OldRepository, StringComparison.OrdinalIgnoreCase))
+                        loaded.Repository = new PotaUpdaterConfig().Repository;
+                    if (string.Equals(loaded.ProductName, OldProductName, StringComparison.OrdinalIgnoreCase))
+                        loaded.ProductName = new PotaUpdaterConfig().ProductName;
                     MigrateTokenAtRest(loaded);
                     return loaded;
                 }

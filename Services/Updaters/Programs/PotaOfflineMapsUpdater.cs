@@ -6,7 +6,7 @@ using HamProgramAutoUpdate.Services.Updaters.Shared;
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 
 /// <summary>Runs a separately installed maintenance tool (POTA Offline Map
-/// Updater) that keeps the POTA Activator app's downloadable offline state
+/// Updater) that keeps the POTA Activation Tool app's downloadable offline state
 /// maps current. Only present on the one PC that tool is installed on, so
 /// the card never appears anywhere else. Unlike the other updaters, the work
 /// happens in that tool's own process; this just launches it, relays its

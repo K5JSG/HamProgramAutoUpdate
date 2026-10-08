@@ -11,7 +11,7 @@ versions, and downloads and installs silently when one is out of date.
 Programs tracked: BktTimeSync, Callsign Lookup, CHIRP, DXPeditions Tracker,
 fldigi (one card that also covers flamp, flrig, flmsg and flwrap - whichever
 of them are installed), GridTracker, Ham Radio Deluxe, JS8Call
-(JS8Call-improved), Log4OM, N1MM Logger+, NetLogger, POTA Activator,
+(JS8Call-improved), Log4OM, N1MM Logger+, NetLogger, POTA Activation Tool,
 RT Systems, TQSL, WSJT-X and WSJT-X Improved.
 
 ---
