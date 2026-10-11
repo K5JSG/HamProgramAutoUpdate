@@ -18,6 +18,8 @@ namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 public sealed class RtSystemsUpdater : UpdaterBase
 {
     private const string BaseDir = @"C:\RT Systems V5";
+    // A module normally takes seconds; a real file download a minute or two.
+    private static readonly TimeSpan ModuleTimeout = TimeSpan.FromMinutes(5);
     private static readonly string[] SkipFolderNames = { "dist", "build", "update script" };
 
     private static readonly Regex CompareVersionRegex = new(
@@ -102,7 +104,8 @@ public sealed class RtSystemsUpdater : UpdaterBase
             new[] { "Installed Programmers", "RT Updater", "RTUpdater" },
             buttonLabelSubstrings: new[] { "OK" },
             visibleOnlyButtonLabelSubstrings: new[] { "Update" },
-            desktop: hDesktop);
+            desktop: hDesktop,
+            clickWhenStaticText: ("Update needed", "Update"));
         suppressor.Start();
 
         var updatedCount = 0;
@@ -120,7 +123,19 @@ public sealed class RtSystemsUpdater : UpdaterBase
                 {
                     // Working directory is the exe's own folder (the module's).
                     using var proc = HiddenDesktopAutomation.StartOnDesktop(updaterPath, "/silent", desktopName);
-                    await proc.WaitForExitAsync(ctx.CancellationToken);
+                    // One stuck module must not eat the whole run's time limit.
+                    using var moduleCts = CancellationTokenSource.CreateLinkedTokenSource(ctx.CancellationToken);
+                    moduleCts.CancelAfter(ModuleTimeout);
+                    try
+                    {
+                        await proc.WaitForExitAsync(moduleCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        try { proc.Kill(entireProcessTree: true); } catch (Exception) { }
+                        ctx.CancellationToken.ThrowIfCancellationRequested();
+                        throw new TimeoutException($"no result after {ModuleTimeout.TotalMinutes:0} minutes");
+                    }
 
                     var updated = WasUpdatedPerLog(folder) ?? DirectoryMaxWriteTime(folder) > beforeMtime;
                     if (updated)
@@ -133,7 +148,7 @@ public sealed class RtSystemsUpdater : UpdaterBase
                         ctx.Log.Line($"[{i + 1}/{updaters.Count}] Checking updates for: {folder} -> No updates found.");
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     ctx.Log.Line($"[{i + 1}/{updaters.Count}] Checking updates for: {folder} -> FAILED TO RUN (Error: {ex.Message})");
                     failedCount++;
@@ -229,6 +244,11 @@ public sealed class RtSystemsUpdater : UpdaterBase
         string content;
         try { content = File.ReadAllText(logPath, Encoding.Unicode); }
         catch (Exception) { return null; }
+
+        // A file missing from the module has no local version, so its compare
+        // line is "A and " and never matches below - but the download is logged.
+        if (content.Contains("Finished Downloading File", StringComparison.OrdinalIgnoreCase))
+            return true;
 
         var matches = CompareVersionRegex.Matches(content);
         if (matches.Count == 0) return null;

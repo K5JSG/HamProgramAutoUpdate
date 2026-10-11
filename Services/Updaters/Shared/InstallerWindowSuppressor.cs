@@ -16,6 +16,9 @@ public sealed class InstallerWindowSuppressor : IDisposable
     private readonly string[] _titleSubstrings;
     private readonly string[]? _buttonLabelSubstrings;
     private readonly string[] _visibleOnlyButtonLabelSubstrings;
+    private readonly (string StaticText, string ButtonLabel)? _clickWhenStaticText;
+    private readonly HashSet<IntPtr> _conditionalClicked = new();
+    private readonly HashSet<IntPtr> _conditionalClosed = new();
     private readonly IntPtr _desktop;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -35,9 +38,17 @@ public sealed class InstallerWindowSuppressor : IDisposable
     /// <param name="desktop">A hidden desktop (see HiddenDesktopAutomation) to
     /// watch instead of the caller's own. Plain EnumWindows only sees the
     /// calling thread's desktop.</param>
+    /// <param name="clickWhenStaticText">Click <c>ButtonLabel</c> (once per
+    /// window, hidden or not) when the window has an enabled static text child
+    /// that is exactly <c>StaticText</c>. RTUpdater_V5 labels its hidden main
+    /// dialog "Update needed" when a module really has files to download;
+    /// unlike the up-to-date case above, it then waits forever for Update to
+    /// be clicked (seen live 2026-10-11: every nightly run hung there).</param>
     public InstallerWindowSuppressor(string[] titleSubstrings, string[]? buttonLabelSubstrings = null,
-        string[]? visibleOnlyButtonLabelSubstrings = null, IntPtr desktop = default)
+        string[]? visibleOnlyButtonLabelSubstrings = null, IntPtr desktop = default,
+        (string StaticText, string ButtonLabel)? clickWhenStaticText = null)
     {
+        _clickWhenStaticText = clickWhenStaticText;
         _titleSubstrings = titleSubstrings;
         _buttonLabelSubstrings = buttonLabelSubstrings;
         _visibleOnlyButtonLabelSubstrings = visibleOnlyButtonLabelSubstrings ?? Array.Empty<string>();
@@ -104,6 +115,27 @@ public sealed class InstallerWindowSuppressor : IDisposable
         {
             if (clickMode)
             {
+                if (_clickWhenStaticText is { } cond)
+                {
+                    if (!_conditionalClicked.Contains(hWnd))
+                    {
+                        if (TryClickWhenStaticText(hWnd, cond.StaticText, cond.ButtonLabel, null))
+                        {
+                            _conditionalClicked.Add(hWnd);
+                            continue;
+                        }
+                    }
+                    else if (!_conditionalClosed.Contains(hWnd))
+                    {
+                        // The dialog stays up after the update, with Update
+                        // greyed out and a Close button - nothing else ends
+                        // the RTUpdater process.
+                        if (TryClickWhenStaticText(hWnd, cond.StaticText, "Close", cond.ButtonLabel))
+                            _conditionalClosed.Add(hWnd);
+                        continue;
+                    }
+                }
+
                 var labels = visible ? _buttonLabelSubstrings!.Concat(_visibleOnlyButtonLabelSubstrings).ToArray() : _buttonLabelSubstrings!;
                 // BM_CLICK fakes a mouse click, which nothing on a non-input
                 // desktop reliably acts on - use the WM_COMMAND route there.
@@ -113,6 +145,44 @@ public sealed class InstallerWindowSuppressor : IDisposable
 
             if (visible) NativeMethods.ShowWindow(hWnd, NativeMethods.SW_HIDE);
         }
+    }
+
+    /// <summary>Posts a click on <paramref name="buttonLabel"/> when the window
+    /// has an enabled static <paramref name="staticText"/> and that button is
+    /// enabled - and, if given, <paramref name="mustBeDisabledLabel"/> is
+    /// greyed out.</summary>
+    private static bool TryClickWhenStaticText(IntPtr parent, string staticText, string buttonLabel,
+        string? mustBeDisabledLabel)
+    {
+        var textFound = false;
+        var button = IntPtr.Zero;
+        var otherDisabled = mustBeDisabledLabel is null;
+        NativeMethods.EnumChildWindows(parent, (hWnd, _) =>
+        {
+            var cls = GetClassName(hWnd);
+            var text = GetWindowText(hWnd);
+            var enabled = NativeMethods.IsWindowEnabled(hWnd);
+            if (string.Equals(cls, "Static", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(text, staticText, StringComparison.OrdinalIgnoreCase)
+                && enabled)
+                textFound = true;
+            else if (string.Equals(cls, "Button", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(text, buttonLabel, StringComparison.OrdinalIgnoreCase) && enabled)
+                    button = hWnd;
+                else if (mustBeDisabledLabel is not null
+                    && string.Equals(text, mustBeDisabledLabel, StringComparison.OrdinalIgnoreCase) && !enabled)
+                    otherDisabled = true;
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        if (!textFound || !otherDisabled || button == IntPtr.Zero) return false;
+
+        // WM_COMMAND/BN_CLICKED, as in TryClickChildButton: works on a hidden dialog.
+        var id = NativeMethods.GetDlgCtrlID(button);
+        NativeMethods.PostMessage(parent, NativeMethods.WM_COMMAND, (IntPtr)((NativeMethods.BN_CLICKED << 16) | (id & 0xFFFF)), button);
+        return true;
     }
 
     private static bool TryClickChildButton(IntPtr parent, string[] labelSubstrings, bool simulateMouse)
@@ -187,6 +257,9 @@ public sealed class InstallerWindowSuppressor : IDisposable
 
         [DllImport("user32.dll")]
         public static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool IsWindowEnabled(IntPtr hWnd);
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
