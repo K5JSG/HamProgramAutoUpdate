@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Net.Http;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
@@ -6,10 +7,10 @@ using HamProgramAutoUpdate.Services.Updaters.Shared;
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 
 /// <summary>
-/// Ported from WSJTX_Update_Script.py. Uses SourceForge's RSS feed rather
-/// than the project's HTML page - the HTML front-end 403s scripted requests,
-/// RSS doesn't. Release-candidate folders (-rcN) are excluded before picking
-/// the newest final release.
+/// Ported from WSJTX_Update_Script.py. The project moved its releases from
+/// SourceForge to GitHub (WSJTX/wsjtx) in 2026, so this reads GitHub's
+/// "latest release" endpoint, which by definition skips the beta and
+/// release-candidate pre-releases the project also publishes there.
 ///
 /// The original script hardcoded C:\WSJT\wsjtx as the install location
 /// (confirmed against one specific machine's layout); this port also checks
@@ -28,7 +29,7 @@ namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 /// </summary>
 public sealed class WsjtxUpdater : UpdaterBase
 {
-    private const string ReleasesRssUrl = "https://sourceforge.net/projects/wsjt/rss?path=/";
+    private const string Repository = "WSJTX/wsjtx";
 
     private static readonly string[] CandidatePaths =
     {
@@ -38,8 +39,12 @@ public sealed class WsjtxUpdater : UpdaterBase
         @"C:\Program Files (x86)\WSJT-X\wsjtx.exe",
     };
 
-    private static readonly Regex ReleaseFolderRegex = new(
-        @"/wsjtx-(?<ver>\d+\.\d+\.\d+)(?<rc>-rc\d+)?/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // The installer, not the bare wsjtx.exe / jt9.exe / wsprd.exe assets
+    // that are attached to the same release.
+    private static readonly Regex Win64InstallerRegex = new(
+        @"^wsjtx-.*win64\.exe$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex Win32InstallerRegex = new(
+        @"^wsjtx-.*win32\.exe$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public WsjtxUpdater() : base("wsjtx", "WSJT-X", DetectRealWsjtx)
     {
@@ -65,31 +70,25 @@ public sealed class WsjtxUpdater : UpdaterBase
         var target = DetectTarget();
         if (!target.IsInstalled) return SkipNotInstalled(ctx);
 
-        ctx.Log.Line($"Checking {ReleasesRssUrl} for the latest final release...");
-        string rss;
+        ctx.Log.Line($"Checking GitHub releases for {Repository}...");
+        GitHubRelease? release;
         try
         {
-            rss = await HttpDownloader.GetStringAsync(ctx.Http, ReleasesRssUrl, ctx.CancellationToken);
+            release = await FetchLatestReleaseAsync(ctx.Http, ctx.CancellationToken);
         }
         catch (Exception ex)
         {
-            ctx.Log.Line($"WSJT-X Updater FAILED: could not reach the release feed ({ex.Message})");
+            ctx.Log.Line($"WSJT-X Updater FAILED: could not reach GitHub ({ex.Message})");
             return UpdateResult.Failed(ex.Message);
         }
 
-        var finals = ReleaseFolderRegex.Matches(rss)
-            .Where(m => !m.Groups["rc"].Success)
-            .Select(m => m.Groups["ver"].Value)
-            .Distinct()
-            .ToList();
-
-        if (finals.Count == 0)
+        if (release is null || string.IsNullOrWhiteSpace(release.TagName))
         {
-            ctx.Log.Line("WSJT-X Updater FAILED: no final release found in the release feed");
+            ctx.Log.Line("WSJT-X Updater FAILED: no final release found");
             return UpdateResult.Failed("No final release found");
         }
 
-        var latest = finals.Aggregate((a, b) => FileVersionHelper.IsNewer(b, a) ? b : a);
+        var latest = release.TagName.TrimStart('v', 'V');
         var current = target.Version;
 
         if (!ctx.Force && !FileVersionHelper.IsNewer(latest, current))
@@ -107,29 +106,15 @@ public sealed class WsjtxUpdater : UpdaterBase
             return UpdateResult.UpToDate("Dry run");
         }
 
-        var filesRssUrl = $"https://sourceforge.net/projects/wsjt/rss?path=/wsjtx-{latest}";
-        string filesRss;
-        try
-        {
-            filesRss = await HttpDownloader.GetStringAsync(ctx.Http, filesRssUrl, ctx.CancellationToken);
-        }
-        catch (Exception ex)
-        {
-            ctx.Log.Line($"WSJT-X Updater FAILED: could not list files for {latest} ({ex.Message})");
-            return UpdateResult.Failed(ex.Message);
-        }
-
-        var linkMatch = Regex.Match(filesRss, @"<link>(?<url>[^<]*wsjtx-[^<]*win64\.exe[^<]*)</link>", RegexOptions.IgnoreCase);
-        if (!linkMatch.Success)
-            linkMatch = Regex.Match(filesRss, @"<link>(?<url>[^<]*wsjtx-[^<]*win32\.exe[^<]*)</link>", RegexOptions.IgnoreCase);
-
-        if (!linkMatch.Success)
+        var asset = release.Assets.FirstOrDefault(a => Win64InstallerRegex.IsMatch(a.Name))
+                    ?? release.Assets.FirstOrDefault(a => Win32InstallerRegex.IsMatch(a.Name));
+        if (asset is null)
         {
             ctx.Log.Line($"WSJT-X Updater FAILED: no Windows installer found among the files for {latest}");
             return UpdateResult.Failed("Windows installer not found in release files");
         }
 
-        var downloadUrl = WebUtility.HtmlDecode(linkMatch.Groups["url"].Value.Trim());
+        var downloadUrl = asset.BrowserDownloadUrl;
         var installDir = InstallPathHelper.InstallDirFor(target.InstallPath!);
 
         var tempDir = Path.Combine(AppPaths.TempDir, $"WsjtxUpdate_{Guid.NewGuid():N}");
@@ -190,4 +175,15 @@ public sealed class WsjtxUpdater : UpdaterBase
         }
     }
 
+    private static async Task<GitHubRelease?> FetchLatestReleaseAsync(HttpClient http, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repository}/releases/latest");
+        request.Headers.UserAgent.ParseAdd("HamProgramAutoUpdate");
+        request.Headers.Accept.ParseAdd("application/vnd.github+json");
+
+        using var response = await http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync(ct);
+        return JsonSerializer.Deserialize<GitHubRelease>(json);
+    }
 }
