@@ -12,6 +12,7 @@ public static class UpdaterRegistry
             new BktTimeSyncUpdater(),
             new CallsignLookupUpdater(),
             new ChirpUpdater(),
+            new DxccChartsUpdater(),
             new DXPeditionsUpdater(),
             new FldigiUpdater(),
             new GridTrackerUpdater(),

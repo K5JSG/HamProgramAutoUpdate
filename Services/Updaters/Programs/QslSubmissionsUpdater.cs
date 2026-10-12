@@ -25,7 +25,10 @@ public sealed class QslSubmissionsUpdater : UpdaterBase
     private const string ProductName = "QSL Card Submissions";
     private const string ExeName = "QSLCardSubmissions.exe";
 
-    private static string OwnTokenFilePath => PrivateGitHubRepo.TokenFilePath("qsl_submissions_config.json");
+    private static string OwnTokenFilePath => TokenFilePath;
+
+    /// <summary>Also the fallback token for the DXCC Charts card (see DxccChartsUpdater).</summary>
+    internal static string TokenFilePath => PrivateGitHubRepo.TokenFilePath("qsl_submissions_config.json");
 
     public QslSubmissionsUpdater() : base("qsl_submissions", ProductName, DetectQsl)
     {

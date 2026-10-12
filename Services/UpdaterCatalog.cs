@@ -45,6 +45,9 @@ public static class UpdaterCatalog
         new("chirp", "CHIRP",
             @"Chirp Update Script\chirp_updater.log"),
 
+        new("dxcc_charts", "DXCC Charts",
+            @"DXCC Charts Updater\dxcc_charts_updater.log"),
+
         new("dxpeditions", "DXPeditions Tracker",
             @"DXPeditions Updater\dxpeditions_updater.log"),
 
