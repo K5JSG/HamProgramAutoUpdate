@@ -8,11 +8,15 @@ The update logic for every tracked program runs in-process (no external
 updater scripts) - it scrapes each program's own download page, compares
 versions, and downloads and installs silently when one is out of date.
 
-Programs tracked: BktTimeSync, Callsign Lookup, CHIRP, DXPeditions Tracker,
+Programs tracked: AntScope2, Audacity, BktTimeSync, Callsign Lookup, CHIRP,
+DXPeditions Tracker, EchoLink,
 fldigi (one card that also covers flamp, flrig, flmsg and flwrap - whichever
 of them are installed), GridTracker, Ham Radio Deluxe, JS8Call
 (JS8Call-improved), Log4OM, N1MM Logger+, NetLogger, POTA Activation Tool,
-RT Systems, TQSL, WSJT-X and WSJT-X Improved.
+RT Systems, TQSL, Voice Keyer, WSJT-X and WSJT-X Improved.
+
+Every program's card has a **Snooze** button: pick a date and time and that
+one program's updates are skipped until then, then resume on their own.
 
 ---
 

@@ -365,6 +365,27 @@ public partial class MainWindow : Window
         Refresh();
     }
 
+    private void SnoozeOne_Click(object sender, RoutedEventArgs e)
+    {
+        if (KeyOf(sender) is not { } key) return;
+
+        var name = UpdaterCatalog.Find(key)?.DisplayName ?? key;
+        var dialog = new SnoozeWindow(name, UpdateSnooze.SnoozedUntil(key)) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+
+        var error = dialog.Cleared
+            ? UpdateSnooze.Clear(key)
+            : UpdateSnooze.Set(key, dialog.SnoozeUntil!.Value);
+
+        if (error is not null)
+        {
+            MessageBox.Show($"Could not save the snooze for {name}.\n\n{error}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        Refresh();
+    }
+
     private void ViewLog_Click(object sender, RoutedEventArgs e)
     {
         if (KeyOf(sender) is not { } key) return;

@@ -36,6 +36,12 @@ public static class UpdaterCatalog
 
     public static readonly IReadOnlyList<UpdaterEntry> Entries = new List<UpdaterEntry>
     {
+        new("antscope2", "AntScope2",
+            @"AntScope2 Updater\antscope2_updater.log"),
+
+        new("audacity", "Audacity",
+            @"Audacity Updater\audacity_updater.log"),
+
         new("bkttimesync", "BktTimeSync",
             @"BktTimeSync Updater\bkttimesync_updater.log"),
 
@@ -50,6 +56,9 @@ public static class UpdaterCatalog
 
         new("dxpeditions", "DXPeditions Tracker",
             @"DXPeditions Updater\dxpeditions_updater.log"),
+
+        new("echolink", "EchoLink",
+            @"EchoLink Updater\echolink_updater.log"),
 
         new("fldigi", "fldigi",
             @"fldigi Updater\fldigi_updater.log"),
@@ -91,6 +100,9 @@ public static class UpdaterCatalog
 
         new("tqsl", "TQSL",
             @"TQSL Updater\tqsl_updater.log"),
+
+        new("voice_keyer", "Voice Keyer",
+            @"Voice Keyer Updater\voice_keyer_updater.log"),
 
         new("wsjtx", "WSJT-X",
             @"WSJTX Update Script\wsjtx_updater.log"),

@@ -9,11 +9,14 @@ public static class UpdaterRegistry
     public static readonly IReadOnlyDictionary<string, IProgramUpdater> All =
         new IProgramUpdater[]
         {
+            new AntScope2Updater(),
+            new AudacityUpdater(),
             new BktTimeSyncUpdater(),
             new CallsignLookupUpdater(),
             new ChirpUpdater(),
             new DxccChartsUpdater(),
             new DXPeditionsUpdater(),
+            new EchoLinkUpdater(),
             new FldigiUpdater(),
             new GridTrackerUpdater(),
             new HamRadioVSPESwitcherUpdater(),
@@ -27,6 +30,7 @@ public static class UpdaterRegistry
             new QslSubmissionsUpdater(),
             new RtSystemsUpdater(),
             new TqslUpdater(),
+            new VoiceKeyerUpdater(),
             new WsjtxUpdater(),
             new WsjtxImprovedUpdater(),
         }.ToDictionary(u => u.Key);

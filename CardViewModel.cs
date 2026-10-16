@@ -152,7 +152,27 @@ public sealed class CardViewModel
         ? $"{_s.Name} was not detected on this PC - nothing to update."
         : _s.IsRunning
             ? "Already running"
-            : "Run this program's updater now";
+            : _s.SnoozedUntil is not null
+                ? $"Snoozed until {SnoozedUntilText} - running it now just logs a skip."
+                : "Run this program's updater now";
+
+    // ------------------------------------------------------------- snooze
+
+    public bool IsSnoozed => _s.SnoozedUntil is not null;
+
+    public string SnoozedUntilText => _s.SnoozedUntil?.ToString("ddd MMM d, h:mm tt") ?? "";
+
+    public string SnoozeButtonText => IsSnoozed ? "Snoozed" : "Snooze";
+
+    public string SnoozeTooltip => IsSnoozed
+        ? $"Updates for this program are snoozed until {SnoozedUntilText}. Click to change or clear."
+        : "Skip this program's updates until a date and time you pick.";
+
+    public string SnoozeBannerText => $"Updates snoozed until {SnoozedUntilText}";
+
+    public Visibility SnoozeBannerVisibility => IsSnoozed ? Visibility.Visible : Visibility.Collapsed;
+
+    public Brush SnoozeButtonBorder => IsSnoozed ? Warn : PanelBorder;
 
     public Visibility StopVisibility => _s.IsRunning ? Visibility.Visible : Visibility.Collapsed;
 

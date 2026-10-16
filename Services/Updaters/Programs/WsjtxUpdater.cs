@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using HamProgramAutoUpdate.Services;
 using HamProgramAutoUpdate.Services.Updaters.Shared;
+using AppInfo = HamProgramAutoUpdate.AppInfo;
 
 namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 
@@ -93,6 +94,7 @@ public sealed class WsjtxUpdater : UpdaterBase
 
         if (!ctx.Force && !FileVersionHelper.IsNewer(latest, current))
         {
+            if (!ctx.DryRun && AppInfo.IsElevated) RemoveStaleVersionedEntries(ctx);
             ctx.Log.Line($"Already up to date (installed {current ?? "unknown"}, latest {latest}).");
             ctx.Log.Line("WSJT-X Updater completed successfully");
             return UpdateResult.UpToDate();
@@ -165,6 +167,8 @@ public sealed class WsjtxUpdater : UpdaterBase
             await DesktopShortcutCleaner.RemoveMatchingWithDelayAsync(
                 TimeSpan.FromSeconds(2), "WSJT-X", "WSJTX");
 
+            RemoveStaleVersionedEntries(ctx);
+
             ctx.Log.Line($"Upgrade applied successfully to version {latest}.");
             ctx.Log.Line("WSJT-X Updater completed successfully");
             return UpdateResult.Updated(latest);
@@ -172,6 +176,61 @@ public sealed class WsjtxUpdater : UpdaterBase
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    private static readonly Regex VersionedKeyRegex = new(
+        @"^wsjtx (?<v>\d+(?:\.\d+)*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// WSJT-X's NSIS installer registers a versioned Add/Remove Programs key
+    /// ("wsjtx 3.0.2") on every install and never removes the previous
+    /// version's, so Installed Apps ends up listing one entry per version
+    /// ever installed, all pointing at the same Uninstall.exe. Deletes every
+    /// "wsjtx x.y.z" key that is older than the newest one AND has the same
+    /// UninstallString as it - i.e. only genuine leftovers from this same
+    /// install, never WSJT-X Improved's own key or a separate install. Only
+    /// the registry entry is removed; the old uninstaller is never run
+    /// (it would uninstall the program that was just installed).
+    /// </summary>
+    internal static void RemoveStaleVersionedEntries(UpdaterContext ctx)
+    {
+        try
+        {
+            foreach (var basePath in new[]
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+            })
+            {
+                using var root = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(basePath, writable: true);
+                if (root is null) continue;
+
+                var entries = new List<(string Name, string Version, string? Uninstaller)>();
+                foreach (var name in root.GetSubKeyNames())
+                {
+                    var match = VersionedKeyRegex.Match(name);
+                    if (!match.Success) continue;
+
+                    using var key = root.OpenSubKey(name);
+                    entries.Add((name, match.Groups["v"].Value, key?.GetValue("UninstallString") as string));
+                }
+                if (entries.Count < 2) continue;
+
+                var newest = entries.Aggregate((a, b) => FileVersionHelper.IsNewer(b.Version, a.Version) ? b : a);
+                foreach (var entry in entries)
+                {
+                    if (entry.Name == newest.Name) continue;
+                    if (!string.Equals(entry.Uninstaller, newest.Uninstaller, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    root.DeleteSubKeyTree(entry.Name, throwOnMissingSubKey: false);
+                    ctx.Log.Line($"Removed the leftover Installed Apps entry \"{entry.Name}\".");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ctx.Log.Line($"WSJT-X: could not remove old Installed Apps entries ({ex.Message}) - harmless.");
         }
     }
 

@@ -190,6 +190,16 @@ public sealed class UpdaterRunner : IUpdaterRunner
     {
         var log = updater.CreateLog(UpdaterCatalog.LogPath(entry));
 
+        var snoozedUntil = UpdateSnooze.SnoozedUntil(entry.Key);
+        if (snoozedUntil is not null)
+        {
+            log.BeginRun(updater.DisplayName);
+            log.Line($"{updater.DisplayName} Updater: snoozed until {snoozedUntil:yyyy-MM-dd HH:mm} - skipping.");
+            log.Line($"{updater.DisplayName} Updater completed successfully");
+            log.EndRun();
+            return UpdateResult.Skipped($"Snoozed until {snoozedUntil:yyyy-MM-dd HH:mm}");
+        }
+
         // Closes a real cross-process race: the headless --run-updates
         // scheduled task (a separate process) can run the same program's
         // updater at the same time as this one - see

@@ -456,6 +456,12 @@ internal sealed class GitHubRelease
 
     [JsonPropertyName("assets")]
     public List<GitHubAsset> Assets { get; set; } = new();
+
+    [JsonPropertyName("prerelease")]
+    public bool Prerelease { get; set; }
+
+    [JsonPropertyName("draft")]
+    public bool Draft { get; set; }
 }
 
 internal sealed class GitHubAsset

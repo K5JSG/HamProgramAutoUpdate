@@ -72,6 +72,7 @@ public sealed class StatusService : IStatusService
                 LastUpdateRemembered = remembered is not null && parsed.LastUpdate is null,
                 ErrorMessage = parsed.ErrorMessage,
                 IsRunning = _runner.IsRunning(entry.Key),
+                SnoozedUntil = UpdateSnooze.SnoozedUntil(entry.Key),
             });
         }
 

@@ -50,4 +50,8 @@ public sealed class ProgramStatus
 
     /// <summary>True when this dashboard currently has the updater running.</summary>
     public bool IsRunning { get; set; }
+
+    /// <summary>When set (and in the future), this program's updates are
+    /// snoozed until then - see UpdateSnooze.</summary>
+    public DateTime? SnoozedUntil { get; set; }
 }

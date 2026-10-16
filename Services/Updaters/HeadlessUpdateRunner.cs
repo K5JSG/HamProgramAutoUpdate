@@ -243,6 +243,17 @@ public static class HeadlessUpdateRunner
     {
         var log = updater.CreateLog(UpdaterCatalog.LogPath(entry));
 
+        var snoozedUntil = force ? null : UpdateSnooze.SnoozedUntil(entry.Key);
+        if (snoozedUntil is not null)
+        {
+            log.BeginRun(updater.DisplayName);
+            log.Line($"{updater.DisplayName} Updater: snoozed until {snoozedUntil:yyyy-MM-dd HH:mm} - skipping.");
+            log.Line($"{updater.DisplayName} Updater completed successfully");
+            log.EndRun();
+            Console.WriteLine($"{entry.DisplayName}: SKIPPED (snoozed until {snoozedUntil:yyyy-MM-dd HH:mm})");
+            return UpdateOutcome.Skipped;
+        }
+
         // Closes a real cross-process race: the interactive dashboard
         // (UpdaterRunner, a separate process from this headless one) can run
         // the same program's updater from a card's own Run button at the
