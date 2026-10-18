@@ -12,7 +12,10 @@ Programs tracked: AntScope2, Audacity, BktTimeSync, Callsign Lookup, CHIRP,
 DXPeditions Tracker, EchoLink,
 fldigi (one card that also covers flamp, flrig, flmsg and flwrap - whichever
 of them are installed), GridTracker, Ham Radio Deluxe, JS8Call
-(JS8Call-improved), Log4OM, N1MM Logger+, NetLogger, POTA Activation Tool,
+(JS8Call-improved), Log4OM, N1MM Logger+,
+N3FJP Software (one card that updates whichever of N3FJP's programs are
+installed - Amateur Contact Log and the contest and state QSO party logs),
+NetLogger, POTA Activation Tool,
 RT Systems, TQSL, Voice Keyer, WSJT-X and WSJT-X Improved.
 
 Every program's card has a **Snooze** button: pick a date and time and that
