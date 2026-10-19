@@ -24,6 +24,7 @@ public static class UpdaterRegistry
             new Js8CallUpdater(),
             new Log4omUpdater(),
             new N1mmUpdater(),
+            new N1mmCountyDataToolUpdater(),
             new N3fjpUpdater(),
             new NetLoggerUpdater(),
             new PotaUpdater(),

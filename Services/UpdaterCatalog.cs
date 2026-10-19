@@ -81,6 +81,9 @@ public static class UpdaterCatalog
         new("n1mm", "N1MM Logger+",
             @"N1MM Logger+\N1MM Updater Script\N1MM_Updater.log"),
 
+        new("n1mm_county_data", "N1MM County Data",
+            @"N1MM County Data Updater\n1mm_county_data_updater.log"),
+
         new("n3fjp", "N3FJP Software",
             @"N3FJP Updater\n3fjp_updater.log"),
 
