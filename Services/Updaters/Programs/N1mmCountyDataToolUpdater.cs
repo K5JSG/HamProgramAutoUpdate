@@ -110,10 +110,24 @@ public sealed class N1mmCountyDataToolUpdater : UpdaterBase
         if (ctx.Force) yield return "--force";
     }
 
+    private static readonly Regex LeadingTimestampRegex = new(@"^\[\d{1,2}:\d{2}:\d{2}\]\s*", RegexOptions.Compiled);
+
+    /// <summary>The tool stamps every line it prints and this program's log
+    /// adds its own timestamp, so the tool's is dropped to avoid
+    /// "[09:10:32] [09:10:32] ...". Returns null for the tool's own closing
+    /// line, which this card already writes itself.</summary>
+    public static string? TidyToolLine(string line)
+    {
+        var text = LeadingTimestampRegex.Replace(line, "").TrimEnd();
+        return string.Equals(text, "N1MM County Data Updater completed successfully", StringComparison.Ordinal)
+            ? null
+            : text;
+    }
+
     private static void OnToolLine(UpdaterContext ctx, string? line, Counts counts)
     {
         if (string.IsNullOrWhiteSpace(line)) return;
-        ctx.Log.Line(line);
+        if (TidyToolLine(line) is { } tidy) ctx.Log.Line(tidy);
         var m = SummaryRegex.Match(line);
         if (m.Success)
         {
