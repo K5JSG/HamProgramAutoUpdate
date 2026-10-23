@@ -18,7 +18,8 @@ namespace HamProgramAutoUpdate.Services.Updaters.Programs;
 /// </summary>
 public sealed class AntScope2Updater : UpdaterBase
 {
-    private const string FolderUrl = "https://rigexpert.com/files/software/Antscope/antscope2forwindows/";
+    private const string VcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+    private const string FolderUrl ="https://rigexpert.com/files/software/Antscope/antscope2forwindows/";
     private const string ProductName = "RigExpert AntScope2";
 
     private static readonly Regex InstallerRegex = new(
@@ -98,6 +99,40 @@ public sealed class AntScope2Updater : UpdaterBase
             catch (Exception) { }
 
             try { await Task.Delay(300, ct); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>Best-effort silent install of Microsoft's current Visual C++
+    /// 2015-2022 x64 runtime. Failure is logged but not fatal: the AntScope2
+    /// installer then runs as before. 3010 = installed, reboot pending;
+    /// 1638 = a newer one is already present.</summary>
+    private static async Task InstallVcRuntimeAsync(UpdaterContext ctx, string tempDir)
+    {
+        try
+        {
+            ctx.Log.Line("The Visual C++ runtime AntScope2 needs is missing - installing Microsoft's first...");
+            var path = Path.Combine(tempDir, "vc_redist.x64.exe");
+            var (ok, error) = await HttpDownloader.DownloadToFileAsync(
+                ctx.Http, VcRedistUrl, path, ctx.CancellationToken,
+                perAttemptTimeout: TimeSpan.FromMinutes(5));
+            if (!ok || !HttpDownloader.LooksLikeExe(path))
+            {
+                ctx.Log.Line($"Could not download the Visual C++ runtime ({error ?? "not a real installer"}); continuing without it.");
+                return;
+            }
+
+            var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
+                path, new[] { "/install", "/quiet", "/norestart" }, ctx.CancellationToken,
+                timeout: TimeSpan.FromMinutes(5));
+            if (installOk || exitCode is 3010 or 1638)
+                ctx.Log.Line($"Visual C++ runtime installed (exit code {exitCode}).");
+            else
+                ctx.Log.Line($"Visual C++ runtime install returned exit code {exitCode}; continuing.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            ctx.Log.Line($"Visual C++ runtime install failed ({ex.Message}); continuing without it.");
         }
     }
 
@@ -187,11 +222,28 @@ public sealed class AntScope2Updater : UpdaterBase
             // the installer runs, close those redistributable processes -
             // but only when the runtime is already on this PC, since then
             // they have nothing to add.
+            // On a PC without the runtime that window can't just be closed
+            // (the program needs it), and left open it would hang a hidden
+            // SYSTEM run. So install Microsoft's runtime ourselves first,
+            // silently; the bundled copy then has nothing to add and is
+            // closed below like on any other PC.
+            if (!VcRuntimeInstalled())
+                await InstallVcRuntimeAsync(ctx, tempDir);
+
             ctx.Log.Line("Installing silently...");
             using var watcherCts = CancellationTokenSource.CreateLinkedTokenSource(ctx.CancellationToken);
             var watcher = VcRuntimeInstalled()
                 ? CloseRedistributablesAsync(ctx.Log, watcherCts.Token)
                 : Task.CompletedTask;
+            // Closing the redistributable makes it exit -1, and the installer
+            // then shows its own warning box ("Microsoft Visual C++ Runtime is
+            // not installed (code -1)..." in Ukrainian, titled "RigExpert
+            // AntScope2 <ver> Setup") and waits for OK - harmless, since the
+            // runtime IS there, but it would hang a hidden SYSTEM run. Click
+            // its OK. (Seen live 2026-10-23.)
+            using var suppressor = new InstallerWindowSuppressor(
+                new[] { "AntScope2" }, buttonLabelSubstrings: new[] { "OK" });
+            suppressor.Start();
             (bool installOk, int exitCode) result;
             try
             {
