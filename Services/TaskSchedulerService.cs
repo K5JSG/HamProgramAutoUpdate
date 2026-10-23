@@ -459,7 +459,7 @@ public static class TaskSchedulerService
     <Hidden>false</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <WakeToRun>false</WakeToRun>
-    <ExecutionTimeLimit>PT4H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT5H</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">

@@ -17,12 +17,13 @@ public sealed class PotaOfflineMapsUpdater : UpdaterBase
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
         "K5JSG", "POTA Offline Map Updater", "PotaOfflineMapUpdater.exe");
 
-    /// <summary>The tool stops starting new work at about an hour and finishes
-    /// the state in progress (a large map upload can take 15+ minutes on a
-    /// home connection) - well past the standard HardTimeout.</summary>
-    public override TimeSpan? MaxRunTime => TimeSpan.FromMinutes(90);
+    /// <summary>The tool stops starting new work 15 minutes before its
+    /// budget (so after 3 hours) and finishes the state in progress (a large
+    /// map upload can take 15+ minutes on a home connection) - well past the
+    /// standard HardTimeout. 15 minutes of headroom over the budget.</summary>
+    public override TimeSpan? MaxRunTime => TimeSpan.FromMinutes(210);
 
-    private const int ToolBudgetMinutes = 75;
+    private const int ToolBudgetMinutes = 195;
 
     private static readonly Regex SummaryRegex =
         new(@"Checked (\d+) state\(s\), uploaded (\d+)", RegexOptions.Compiled);
