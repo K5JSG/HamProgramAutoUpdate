@@ -51,6 +51,9 @@ public static class UpdaterCatalog
         new("chirp", "CHIRP",
             @"Chirp Update Script\chirp_updater.log"),
 
+        new("claude_repo_hub", "Claude Repo Hub",
+            @"Claude Repo Hub Updater\claude_repo_hub_updater.log"),
+
         new("dxcc_charts", "DXCC Charts",
             @"DXCC Charts Updater\dxcc_charts_updater.log"),
 

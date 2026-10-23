@@ -24,6 +24,82 @@ public static class DesktopShortcutCleaner
         RemoveMatching(nameSubstrings);
     }
 
+    /// <summary>Full paths of the shortcuts whose names contain one of
+    /// <paramref name="nameSubstrings"/>, on every desktop a silent install
+    /// could put one on (see <see cref="AllDesktops"/>). Take this before
+    /// installing, then hand it to <see cref="RemoveNewWithDelayAsync"/>.</summary>
+    public static HashSet<string> Snapshot(params string[] nameSubstrings)
+    {
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var desktop in AllDesktops())
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(desktop, "*.lnk"))
+                    if (Matches(file, nameSubstrings)) found.Add(file);
+            }
+            catch (Exception) { }
+        }
+        return found;
+    }
+
+    /// <summary>Removes matching shortcuts that were not in
+    /// <paramref name="before"/>, twice (right away and after
+    /// <paramref name="delay"/>) like <see cref="RemoveMatchingWithDelayAsync"/>.
+    /// A shortcut a PC already had is left alone. Returns the names removed.</summary>
+    public static async Task<List<string>> RemoveNewWithDelayAsync(
+        HashSet<string> before, TimeSpan delay, params string[] nameSubstrings)
+    {
+        var removed = new List<string>();
+        RemoveNew(before, nameSubstrings, removed);
+        await Task.Delay(delay);
+        RemoveNew(before, nameSubstrings, removed);
+        return removed;
+    }
+
+    private static void RemoveNew(HashSet<string> before, string[] nameSubstrings, List<string> removed)
+    {
+        foreach (var desktop in AllDesktops())
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(desktop, "*.lnk").ToList())
+                {
+                    if (!Matches(file, nameSubstrings) || before.Contains(file)) continue;
+                    try { File.Delete(file); removed.Add(Path.GetFileName(file)); } catch (Exception) { }
+                }
+            }
+            catch (Exception) { }
+        }
+    }
+
+    private static bool Matches(string file, string[] nameSubstrings)
+    {
+        var name = Path.GetFileNameWithoutExtension(file);
+        return nameSubstrings.Any(s => name.Contains(s, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The running account's desktop, the Public desktop, and every
+    /// profile's own (and OneDrive-redirected) desktop - a nightly run as
+    /// SYSTEM has a desktop of its own that isn't any user's.</summary>
+    private static IEnumerable<string> AllDesktops()
+    {
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var d in Desktops()) dirs.Add(d);
+        try
+        {
+            var usersRoot = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\", "Users");
+            if (Directory.Exists(usersRoot))
+                foreach (var profile in Directory.EnumerateDirectories(usersRoot))
+                {
+                    dirs.Add(Path.Combine(profile, "Desktop"));
+                    dirs.Add(Path.Combine(profile, "OneDrive", "Desktop"));
+                }
+        }
+        catch (Exception) { }
+        return dirs.Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d));
+    }
+
     private static IEnumerable<string> Desktops()
     {
         yield return Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);

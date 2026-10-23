@@ -230,6 +230,8 @@ public sealed class AntScope2Updater : UpdaterBase
             if (!VcRuntimeInstalled())
                 await InstallVcRuntimeAsync(ctx, tempDir);
 
+            var desktopIconsBefore = DesktopShortcutCleaner.Snapshot("AntScope");
+
             ctx.Log.Line("Installing silently...");
             using var watcherCts = CancellationTokenSource.CreateLinkedTokenSource(ctx.CancellationToken);
             var watcher = VcRuntimeInstalled()
@@ -257,6 +259,13 @@ public sealed class AntScope2Updater : UpdaterBase
                 try { await watcher; } catch (Exception) { }
             }
             var (installOk, exitCode) = result;
+
+            // Its installer adds a desktop icon on every install. Remove one
+            // it just added, but never one the PC already had.
+            foreach (var name in await DesktopShortcutCleaner.RemoveNewWithDelayAsync(
+                         desktopIconsBefore, TimeSpan.FromSeconds(3), "AntScope"))
+                ctx.Log.Line($"Removed the desktop shortcut the installer added ({name}).");
+
             if (!installOk)
             {
                 ctx.Log.Line($"AntScope2 Updater FAILED: installer exited with code {exitCode}");

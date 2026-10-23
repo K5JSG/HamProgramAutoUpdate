@@ -14,6 +14,7 @@ public static class UpdaterRegistry
             new BktTimeSyncUpdater(),
             new CallsignLookupUpdater(),
             new ChirpUpdater(),
+            new ClaudeRepoHubUpdater(),
             new DxccChartsUpdater(),
             new DXPeditionsUpdater(),
             new EchoLinkUpdater(),
