@@ -98,6 +98,9 @@ public static class UpdaterCatalog
         new("pota", "POTA Activation Tool",
             @"POTA Activator Parks Activations Updater\POTA_Activator_Parks_Activation.log"),
 
+        new("pota_award", "POTA Award Auto Updater",
+            @"POTA Award Auto Updater Updater\pota_award_updater.log"),
+
         new("pota_offline_maps", "POTA Offline Maps",
             @"POTA Offline Map Updater\pota_offline_maps_updater.log"),
 

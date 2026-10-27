@@ -29,6 +29,7 @@ public static class UpdaterRegistry
             new N3fjpUpdater(),
             new NetLoggerUpdater(),
             new PotaUpdater(),
+            new PotaAwardUpdater(),
             new PotaOfflineMapsUpdater(),
             new QslSubmissionsUpdater(),
             new RtSystemsUpdater(),
