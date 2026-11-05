@@ -70,7 +70,10 @@ public sealed class BktTimeSyncUpdater : UpdaterBase
             return UpdateResult.UpToDate("Dry run");
         }
 
-        var downloadUrl = $"{ListUrl}?nomefile=BktTimeSync%2FBktTimeSync_{latest}.zip";
+        // "&dl=1" is what the site's countdown page adds once its 20 seconds
+        // are up. Without it the server redirects to that HTML wait page
+        // (2026-11), which then fails as "not a zip".
+        var downloadUrl = $"{ListUrl}?nomefile=BktTimeSync%2FBktTimeSync_{latest}.zip&dl=1";
         var tempDir = Path.Combine(AppPaths.TempDir, $"BktTimeSyncUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         var zipPath = Path.Combine(tempDir, "BktTimeSync.zip");
@@ -84,6 +87,17 @@ public sealed class BktTimeSyncUpdater : UpdaterBase
             {
                 ctx.Log.Line($"BktTimeSync Updater FAILED: download failed ({downloadError})");
                 return UpdateResult.Failed(downloadError ?? "Download failed");
+            }
+
+            // A zip starts with "PK". Anything else is the site's HTML wait
+            // page (it changed the download flow before), so say that plainly.
+            using (var fs = File.OpenRead(zipPath))
+            {
+                if (fs.ReadByte() != 'P' || fs.ReadByte() != 'K')
+                {
+                    ctx.Log.Line("BktTimeSync Updater FAILED: the download was not a zip file (the site's download flow may have changed again)");
+                    return UpdateResult.Failed("Download was not a zip");
+                }
             }
 
             ZipFile.ExtractToDirectory(zipPath, tempDir, overwriteFiles: true);
