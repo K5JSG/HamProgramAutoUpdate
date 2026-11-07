@@ -536,8 +536,46 @@ public static class ChirpCloudflareAutomation
     private static async Task<string?> DownloadInstallerAsync(
         UpdaterContext ctx, ChromeDevToolsClient cdp, string downloadDir, string date, CancellationToken ct)
     {
-        var url = $"{BaseUrl}/chirp_next/next-{date}/chirp-next-{date}-installer.exe";
+        // The installer's file name is not stable: it was
+        // "chirp-next-<date>-installer.exe" until next-20261030 and became
+        // "chirp-<date>-installer.exe" with next-20261106 (2026-11-06). The
+        // old fixed name 404'd, no file ever appeared, and the run waited out
+        // the whole 8 minutes. So read the real name from this build's own
+        // folder listing (same tab, Cloudflare already cleared) and only fall
+        // back to the old name if the listing can't be read.
+        var buildDirUrl = $"{BaseUrl}/chirp_next/next-{date}/";
         var expectedName = $"chirp-next-{date}-installer.exe";
+        try
+        {
+            await cdp.NavigateAsync(buildDirUrl, ct);
+
+            // NavigateAsync can return before the new page is in place, so
+            // poll the page until the installer link shows up (or ~20 s pass).
+            var namePattern = new Regex($@"chirp-(?:next-)?{Regex.Escape(date)}-installer\.exe", RegexOptions.IgnoreCase);
+            Match nameMatch = Match.Empty;
+            for (var i = 0; i < 20 && !nameMatch.Success; i++)
+            {
+                await Task.Delay(1000, ct);
+                var listing = await TryGetHtmlAsync(cdp, ct) ?? "";
+                nameMatch = namePattern.Match(listing);
+            }
+
+            if (nameMatch.Success)
+            {
+                expectedName = nameMatch.Value;
+                ctx.Log.Line($"Installer on the server is named {expectedName}.");
+            }
+            else
+            {
+                ctx.Log.Line($"Could not find an installer name in {buildDirUrl} - trying {expectedName}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ctx.Log.Line($"Could not read {buildDirUrl} ({ex.Message}) - trying {expectedName}.");
+        }
+
+        var url = $"{BaseUrl}/chirp_next/next-{date}/{expectedName}";
         var expectedPath = Path.Combine(downloadDir, expectedName);
 
         // A prior interrupted attempt for this exact build could have left
@@ -591,7 +629,7 @@ public static class ChirpCloudflareAutomation
 
         if (target is null)
         {
-            ctx.Log.Line("ERROR: no completed download appeared within 5 minutes.");
+            ctx.Log.Line("ERROR: no completed download appeared within 8 minutes.");
             return null;
         }
 
