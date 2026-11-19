@@ -54,6 +54,9 @@ public static class UpdaterCatalog
         new("claude_repo_hub", "Claude Repo Hub",
             @"Claude Repo Hub Updater\claude_repo_hub_updater.log"),
 
+        new("hrd_bridge", "HRD CAT Bridge",
+            @"HRD CAT Bridge Updater\hrd_bridge_updater.log"),
+
         new("dxcc_charts", "DXCC Charts",
             @"DXCC Charts Updater\dxcc_charts_updater.log"),
 

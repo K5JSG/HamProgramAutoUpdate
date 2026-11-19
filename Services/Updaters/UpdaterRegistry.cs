@@ -21,6 +21,7 @@ public static class UpdaterRegistry
             new FldigiUpdater(),
             new GridTrackerUpdater(),
             new HamRadioVSPESwitcherUpdater(),
+            new HrdBridgeUpdater(),
             new HrdUpdater(),
             new Js8CallUpdater(),
             new Log4omUpdater(),
