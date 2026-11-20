@@ -162,7 +162,10 @@ public sealed class HrdUpdater : UpdaterBase
                 var (ok, exitCode) = await SilentExeInstaller.RunAsync(
                     installerPath, args, ctx.CancellationToken, timeout: TimeSpan.FromSeconds(300));
 
-                var newVersion = target.InstallPath is { } p ? FileVersionHelper.ReadFileVersion(p) : null;
+                // Same source as the "installed" version above (the Installed
+                // Apps entry). HRDLogBook.exe's own file version stays 6.10.0.0
+                // across builds, so reading it here called a good install a failure.
+                var newVersion = DetectTarget().Version;
                 if (ok && FileVersionHelper.IsNewer(newVersion, current))
                 {
                     installed = true;

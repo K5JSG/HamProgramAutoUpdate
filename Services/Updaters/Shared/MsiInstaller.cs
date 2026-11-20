@@ -36,6 +36,9 @@ public static class MsiInstaller
     public static async Task<(bool ok, int exitCode, string message)> InstallAsync(
         string msiPath, string logPath, CancellationToken ct)
     {
+        // Same rule as SilentExeInstaller: an icon the PC already had stays,
+        // one the install adds is removed.
+        var iconsBefore = DesktopShortcutCleaner.SnapshotAll();
         var psi = new ProcessStartInfo
         {
             FileName = "msiexec.exe",
@@ -66,6 +69,8 @@ public static class MsiInstaller
             try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch (Exception) { }
             throw;
         }
+
+        await DesktopShortcutCleaner.RemoveAllNewWithDelayAsync(iconsBefore, TimeSpan.FromSeconds(3));
 
         var ok = MsiExitCodes.IsSuccess(proc.ExitCode);
         return (ok, proc.ExitCode, MsiExitCodes.Describe(proc.ExitCode));

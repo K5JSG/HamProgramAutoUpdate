@@ -71,9 +71,17 @@ public static class SilentExeInstaller
         new[] { InstallerKind.Inno, InstallerKind.Nsis, InstallerKind.WixBurn, InstallerKind.InstallShield }
             .Select(DefaultSilentArgs);
 
+    /// <summary>Runs the installer and waits for it. With
+    /// <paramref name="guardDesktopIcons"/> (the default) any desktop shortcut
+    /// that appears during the run is removed afterwards: an icon the user
+    /// already has stays as it is (re-ticking an installer's icon option makes
+    /// Explorer move it), and a program without one doesn't get one added.
+    /// Callers that manage their own shortcuts pass false.</summary>
     public static async Task<(bool ok, int exitCode)> RunAsync(
-        string exePath, IReadOnlyList<string> args, CancellationToken ct, TimeSpan? timeout = null)
+        string exePath, IReadOnlyList<string> args, CancellationToken ct, TimeSpan? timeout = null,
+        bool guardDesktopIcons = true)
     {
+        var iconsBefore = guardDesktopIcons ? DesktopShortcutCleaner.SnapshotAll() : null;
         var psi = new ProcessStartInfo
         {
             FileName = exePath,
@@ -135,6 +143,9 @@ public static class SilentExeInstaller
             try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch (Exception) { }
             return (false, -1);
         }
+
+        if (iconsBefore is not null)
+            await DesktopShortcutCleaner.RemoveAllNewWithDelayAsync(iconsBefore, TimeSpan.FromSeconds(3));
 
         // NSIS reports ERROR_CANCELLED (1223) even on some successful silent
         // runs - N1MM's Python script treated both 0 and 1223 as success.

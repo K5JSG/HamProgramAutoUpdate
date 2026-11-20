@@ -164,9 +164,8 @@ public sealed class WsjtxUpdater : UpdaterBase
                 return UpdateResult.Failed($"Installer exit code {result.exitCode}");
             }
 
-            await DesktopShortcutCleaner.RemoveMatchingWithDelayAsync(
-                TimeSpan.FromSeconds(2), "WSJT-X", "WSJTX");
-
+            // The unwanted desktop shortcut the installer adds is removed by
+            // SilentExeInstaller.RunAsync (an icon the PC already had stays).
             RemoveStaleVersionedEntries(ctx);
 
             ctx.Log.Line($"Upgrade applied successfully to version {latest}.");

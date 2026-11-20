@@ -57,6 +57,18 @@ public static class DesktopShortcutCleaner
         return removed;
     }
 
+    /// <summary>Every shortcut on every desktop, whatever its name. Take this
+    /// before an install, then hand it to <see cref="RemoveAllNewWithDelayAsync"/>.</summary>
+    public static HashSet<string> SnapshotAll() => Snapshot("");
+
+    /// <summary>Removes every shortcut that was not in <paramref name="before"/>,
+    /// right away and again after <paramref name="delay"/> (some installers add
+    /// theirs a moment after they exit). A shortcut a PC already had is left
+    /// alone, so an upgrade keeps the icon the user has and a first install
+    /// adds none. Returns the names removed.</summary>
+    public static Task<List<string>> RemoveAllNewWithDelayAsync(HashSet<string> before, TimeSpan delay) =>
+        RemoveNewWithDelayAsync(before, delay, "");
+
     private static void RemoveNew(HashSet<string> before, string[] nameSubstrings, List<string> removed)
     {
         foreach (var desktop in AllDesktops())

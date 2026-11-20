@@ -130,10 +130,9 @@ public sealed class GridTrackerUpdater : UpdaterBase
                 return UpdateResult.Failed($"Installer exit code {result.exitCode}");
             }
 
-            // The installer drops an unwanted desktop shortcut even silently.
-            await DesktopShortcutCleaner.RemoveMatchingWithDelayAsync(
-                TimeSpan.FromSeconds(2), "GridTracker", "GridTracker2");
-
+            // The installer drops a desktop shortcut even silently;
+            // SilentExeInstaller.RunAsync removes it (an icon the PC already
+            // had stays).
             ctx.Log.Line($"Updated to {latest}.");
             ctx.Log.Line("Gridtracker Updater completed successfully");
             return UpdateResult.Updated(latest);

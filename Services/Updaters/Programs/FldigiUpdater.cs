@@ -241,7 +241,7 @@ public sealed class FldigiUpdater : UpdaterBase
 
             ctx.Log.Line($"{c.Name}: installing {latest} silently...");
             var (installOk, exitCode) = await SilentExeInstaller.RunAsync(
-                downloadPath, args, ctx.CancellationToken, timeout: TimeSpan.FromSeconds(300));
+                downloadPath, args, ctx.CancellationToken, timeout: TimeSpan.FromSeconds(300), guardDesktopIcons: false);
             if (!installOk)
             {
                 ctx.Log.Line($"{c.Name}: installer exited with code {exitCode}.");
@@ -325,7 +325,7 @@ public sealed class FldigiUpdater : UpdaterBase
             old.Uninstaller,
             new[] { "/S", $"_?={old.InstallDir.TrimEnd('\\')}" },
             ctx.CancellationToken,
-            timeout: TimeSpan.FromSeconds(120));
+            timeout: TimeSpan.FromSeconds(120), guardDesktopIcons: false);
         if (!ok)
         {
             ctx.Log.Line($"{c.Name}: the old version's uninstaller exited with code {exitCode} - it may still be listed.");
