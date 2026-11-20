@@ -90,7 +90,7 @@ Name: "updatestask"; Description: "Check for program updates automatically once 
 
 [Files]
 Source: "..\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\README.md";               DestDir: "{app}"; Flags: ignoreversion isreadme skipifsourcedoesntexist
+Source: "..\README.md";               DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; CHIRP's updater runs in-process (Services/Updaters/Programs/Chirp/
 ; ChirpCloudflareAutomation.cs) - the only thing it still needs on disk is the
@@ -167,6 +167,7 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/Run /TN ""{#DashboardTaskPath}""";
 
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch the dashboard now"; \
     Flags: postinstall nowait skipifsilent shellexec; Check: not DashboardTaskExists
+Filename: "{app}\README.md"; Description: "View the README"; Flags: postinstall shellexec skipifsilent unchecked
 
 [UninstallDelete]
 ; Logs are recreated on every run and carry no history of their own (the
